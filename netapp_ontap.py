@@ -57,6 +57,7 @@ class NetappOntap:
         except Exception as e:
             logger.error("NetappDriver fetch interfaces failed, {}".format(e))
         if not self.data_ip:
+            print("interfaces: {}".format(res_text))
             raise ValueError("can not find Netapp data address")
         logger.info("Netapp driver initialized, data address: {}".format(self.data_ip))
 
