@@ -50,6 +50,8 @@ internal/agent/
 │   ├── memory.go       # 記憶體資訊
 │   ├── disk.go         # 磁碟資訊
 │   └── network.go      # 網路資訊
+├── terminal/
+│   └── executor.go      # 終端機執行器
 └── runner/
     └── runner.go        # 執行管理
 ```
@@ -590,6 +592,76 @@ func (c *WSClient) RunWithReconnect() {
     }
 }
 ```
+
+## 終端機執行器
+
+### Terminal Executor 模組
+
+```go
+// internal/agent/terminal/executor.go
+package terminal
+
+import (
+    "os/exec"
+    "github.com/creack/pty"
+)
+
+type TerminalExecutor struct {
+    sessions map[string]*TerminalSession
+    wsClient *websocket.WSClient
+}
+
+type TerminalSession struct {
+    SessionID string
+    PTY       *os.File
+    Cmd       *exec.Cmd
+    Rows      int
+    Cols      int
+}
+
+func (te *TerminalExecutor) HandleTerminalCommand(command map[string]interface{}) error {
+    sessionID := command["session_id"].(string)
+    cmd := command["command"].(string)
+    
+    switch cmd {
+    case "init":
+        return te.initTerminal(sessionID, params)
+    case "input":
+        return te.handleInput(sessionID, params)
+    case "resize":
+        return te.resizeTerminal(sessionID, params)
+    case "close":
+        return te.closeTerminal(sessionID)
+    }
+    return nil
+}
+
+func (te *TerminalExecutor) initTerminal(sessionID string, params map[string]interface{}) error {
+    // 建立 PTY (Pseudo-Terminal)
+    cmd := exec.Command(shell)
+    ptmx, err := pty.Start(cmd)
+    if err != nil {
+        return err
+    }
+    
+    // 啟動 goroutine 讀取輸出
+    go te.readOutput(sessionID, ptmx)
+    
+    return nil
+}
+```
+
+**功能**:
+- 建立和管理 PTY (Pseudo-Terminal)
+- 處理終端機輸入/輸出
+- 支援終端機大小調整
+- 自動清理終端機 Session
+
+**支援的 Shell**:
+- Linux/macOS: `/bin/bash`, `/bin/sh`, `/bin/zsh`
+- Windows: `cmd.exe`, `powershell.exe`
+
+**詳細設計**: 參考 [遠端終端機存取設計](./remote-terminal.md)
 
 ## 編譯與部署
 

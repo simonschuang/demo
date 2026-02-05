@@ -74,6 +74,16 @@
    - 網路安全與審計監控
    - 安全檢查清單與最佳實踐
 
+### 進階功能
+
+9. **[remote-terminal.md](./remote-terminal.md)** - 遠端終端機存取
+   - Web-based Terminal 設計
+   - 終端機代理架構
+   - PTY (Pseudo-Terminal) 實作
+   - 安全控制與權限管理
+   - Session 管理與審計
+   - UI/UX 設計與實作範例
+
 ## 快速導覽
 
 ### 如果您想了解...
@@ -86,6 +96,7 @@
 - **資料庫設計**: 參考 [data-model.md](./data-model.md)
 - **Kubernetes 部署**: 查看 [kubernetes.md](./kubernetes.md)
 - **安全性考量**: 閱讀 [security.md](./security.md)
+- **遠端終端機功能**: 參考 [remote-terminal.md](./remote-terminal.md)
 
 ## 架構圖總覽
 

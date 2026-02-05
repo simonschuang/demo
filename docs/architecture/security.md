@@ -515,6 +515,21 @@ async def login(request: Request, credentials: LoginRequest):
         details={"method": "password"},
         ip_address=request.client.host
     )
+
+# 終端機存取審計
+@router.websocket("/terminal/{client_id}")
+async def terminal_websocket(...):
+    log_audit_event(
+        user_id=user.id,
+        event_type="terminal.connect",
+        event_action="connect",
+        result="success",
+        details={
+            "client_id": client_id,
+            "session_id": session_id
+        },
+        ip_address=websocket.client.host
+    )
 ```
 
 ### 2. 安全事件監控
@@ -569,6 +584,55 @@ def alert_security_team(message: str):
     send_security_alert("Security Event Detected", message)
 ```
 
+## 遠端終端機安全
+
+### 1. 終端機存取控制
+
+```python
+class TerminalAccessControl:
+    @staticmethod
+    def check_terminal_permission(user: User, client: Client) -> bool:
+        """檢查使用者是否有終端機存取權限"""
+        # 檢查使用者是否擁有 Client
+        if client.user_id != user.id:
+            return False
+        
+        # 檢查使用者是否有終端機權限
+        if not user.has_terminal_permission:
+            return False
+        
+        # 檢查 Client 是否允許終端機存取
+        if not client.allow_terminal_access:
+            return False
+        
+        return True
+```
+
+### 2. Session 管理與超時
+
+```python
+SESSION_TIMEOUT = 3600  # 1 小時
+MAX_SESSIONS_PER_USER = 5
+MAX_IDLE_TIME = 300  # 5 分鐘無活動自動斷線
+```
+
+### 3. 命令審計與記錄
+
+```python
+def log_terminal_command(session_id: str, command: str):
+    """記錄終端機命令"""
+    log_audit_event(
+        event_type="terminal.command",
+        event_action="execute",
+        details={
+            "session_id": session_id,
+            "command": sanitize_command(command)
+        }
+    )
+```
+
+**詳細設計**: 參考 [遠端終端機存取設計](./remote-terminal.md)
+
 ## 定期安全檢查
 
 ### 1. 漏洞掃描
@@ -591,6 +655,7 @@ kubesec scan deployment.yaml
 - 測試 API 端點安全性
 - 測試 WebSocket 連線安全性
 - 驗證認證授權機制
+- **測試終端機存取安全性**
 
 ### 3. 安全更新
 
@@ -612,6 +677,8 @@ kubesec scan deployment.yaml
 - [ ] CORS 設定正確
 - [ ] 審計日誌已啟用
 - [ ] 監控告警已設定
+- [ ] **終端機存取權限已配置**
+- [ ] **終端機 Session 超時已設定**
 
 ### 定期檢查
 - [ ] 檢查審計日誌

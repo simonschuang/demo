@@ -32,6 +32,7 @@
 - 📊 **監控**: 收集 OS、CPU、Memory、Disk、Network 資訊
 - 🚀 **部署**: Kubernetes + Ingress + TLS
 - 🔄 **高可用**: 多 Pod 部署，Redis Presence
+- 🖥️ **遠端終端機**: Web-based Terminal 存取
 
 ### 系統架構
 
@@ -70,6 +71,7 @@ Internet (Clients)
 - [資料模型設計](./architecture/data-model.md)
 - [Kubernetes 部署](./architecture/kubernetes.md)
 - [安全性設計](./architecture/security.md)
+- [遠端終端機存取](./architecture/remote-terminal.md)
 
 ### 開發資源
 - [專案 README](../README.md)
@@ -91,7 +93,8 @@ docs/
     ├── install-distribution.md # 安裝分發設計
     ├── data-model.md           # 資料模型設計
     ├── kubernetes.md           # Kubernetes 部署
-    └── security.md             # 安全性設計
+    ├── security.md             # 安全性設計
+    └── remote-terminal.md      # 遠端終端機存取
 ```
 
 ## 使用說明

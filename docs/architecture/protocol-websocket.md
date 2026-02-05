@@ -263,6 +263,52 @@ Close Reason: "Authentication failed"
 - `RATE_LIMIT`: 頻率限制
 - `CLIENT_NOT_FOUND`: Client 不存在
 
+### 7. Terminal (終端機訊息)
+
+#### Server -> Client (terminal_command)
+```json
+{
+    "type": "terminal_command",
+    "data": {
+        "session_id": "session-uuid-xxxx",
+        "command": "init|input|resize|close",
+        "params": {
+            "rows": 24,
+            "cols": 80,
+            "input": "ls -la\n",
+            "shell": "/bin/bash"
+        }
+    },
+    "timestamp": 1234567890
+}
+```
+
+**command 類型**:
+- `init`: 初始化終端機
+- `input`: 使用者輸入
+- `resize`: 調整終端機大小
+- `close`: 關閉終端機
+
+#### Client -> Server (terminal_data)
+```json
+{
+    "type": "terminal_data",
+    "data": {
+        "session_id": "session-uuid-xxxx",
+        "output": "total 48\ndrwxr-xr-x 5 user user 4096...",
+        "type": "output|error"
+    },
+    "timestamp": 1234567890
+}
+```
+
+**data 欄位**:
+- `session_id`: 終端機 Session ID
+- `output`: 終端機輸出內容
+- `type`: 輸出類型 (output 或 error)
+
+**詳細設計**: 參考 [遠端終端機存取設計](./remote-terminal.md)
+
 ## 連線管理
 
 ### 連線狀態

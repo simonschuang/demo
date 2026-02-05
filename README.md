@@ -24,6 +24,7 @@ The architecture documentation includes:
 6. **Data Model** - Database schema, Redis structures, indexing strategies
 7. **Kubernetes Deployment** - K8s resource configurations, Ingress, TLS settings
 8. **Security Design** - Authentication, encryption, audit monitoring
+9. **Remote Terminal Access** - Web-based terminal, PTY implementation, session management
 
 ### System Features
 
@@ -34,6 +35,7 @@ The architecture documentation includes:
 - 📊 **Monitoring**: Collects OS, CPU, Memory, Disk, Network information
 - 🚀 **Deployment**: Kubernetes + Ingress + TLS
 - 🔄 **High Availability**: Multi-pod deployment, Redis presence management
+- 🖥️ **Remote Terminal**: Web-based terminal access to client hosts
 
 ## Getting Started
 

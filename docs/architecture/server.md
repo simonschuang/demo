@@ -27,7 +27,8 @@
 │   ├── auth.py     # 登入/登出
 │   ├── dashboard.py # 儀表板
 │   ├── clients.py  # Client 管理
-│   └── download.py # 安裝檔下載
+│   ├── download.py # 安裝檔下載
+│   └── terminal.py # 遠端終端機
 ```
 
 **功能**:
@@ -37,6 +38,7 @@
 - Inventory 資訊展示
 - 歷史資料查詢
 - 安裝檔下載頁面
+- **遠端終端機存取** (Remote Terminal)
 
 **使用者隔離**:
 ```python
@@ -52,6 +54,7 @@ async def get_clients(user: User = Depends(get_current_user)):
 ├── clients/        # Client CRUD
 ├── inventory/      # Inventory 查詢
 ├── download/       # 下載安裝檔
+├── terminal/       # 終端機管理
 └── metrics/        # 統計資訊
 ```
 
@@ -64,6 +67,8 @@ async def get_clients(user: User = Depends(get_current_user)):
 - `GET /api/v1/clients/{client_id}/inventory/history` - 取得歷史記錄
 - `GET /api/v1/download/install.sh` - 下載安裝腳本
 - `GET /api/v1/download/agent/{os}/{arch}/{version}` - 下載 Agent Binary
+- `GET /api/v1/terminal/sessions` - 取得終端機 Sessions
+- `GET /api/v1/terminal/sessions/{session_id}/logs` - 取得終端機日誌
 
 ### 3. WebSocket 連線管理模組
 ```python
@@ -261,6 +266,45 @@ async def download_agent_binary(
         filename=f"agent-{os}-{arch}"
     )
 ```
+
+### 7. 遠端終端機代理模組
+
+```python
+# terminal_proxy.py
+@router.websocket("/terminal/{client_id}")
+async def terminal_websocket(
+    websocket: WebSocket,
+    client_id: str,
+    token: str,
+    current_user: User = Depends(get_current_user_from_token)
+):
+    """Terminal WebSocket endpoint"""
+    # 驗證使用者權限
+    client = await verify_client_access(client_id, current_user.id)
+    if not client:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+    
+    # 檢查 Client 是否在線
+    if not await is_client_online(client_id):
+        await websocket.close(code=1008, reason="Client offline")
+        return
+    
+    await terminal_proxy.handle_terminal_connection(
+        websocket,
+        client_id,
+        current_user
+    )
+```
+
+**功能**:
+- 建立 Web UI 到 Client 的終端機代理連線
+- 驗證使用者權限和 Client 狀態
+- 轉發終端機輸入/輸出
+- 管理終端機 Session
+- 記錄審計日誌
+
+**詳細設計**: 參考 [遠端終端機存取設計](./remote-terminal.md)
 
 ## 多 Pod 架構支援
 

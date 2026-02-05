@@ -57,6 +57,7 @@
   - Client 在線狀態管理
   - 設備資訊收集與儲存
   - 安裝檔案分發
+  - **遠端終端機存取** (Remote Terminal Access)
 - **對外服務**: 透過 Ingress 提供 HTTPS (TLS) 服務
 
 ### Client 端 (Golang)
@@ -66,6 +67,7 @@
   - 心跳機制 (Heartbeat: 15 秒)
   - 系統資訊收集 (Inventory)
   - 自動重連機制
+  - **終端機命令執行** (Terminal Command Execution)
 - **執行方式**: 
   - 前景執行 (run.sh)
   - 背景服務 (svc.sh + systemd)
@@ -152,3 +154,4 @@
 - [資料模型設計](./data-model.md)
 - [Kubernetes 部署](./kubernetes.md)
 - [安全性設計](./security.md)
+- [遠端終端機存取](./remote-terminal.md)
