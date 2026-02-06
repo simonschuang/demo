@@ -55,13 +55,15 @@ def test_api_endpoints(hub_proc):
     
     try:
         import urllib.request
-        import pickle
+        import json
         
         # Test health endpoint (would use /health but our impl uses /api/probes)
         # Just verify port is listening
         try:
             req = urllib.request.Request('http://localhost:8080/api/probes')
             response = urllib.request.urlopen(req, timeout=2)
+            # Read response as JSON
+            data = json.loads(response.read().decode('utf-8'))
             print("PASS: API endpoint responding")
             return True
         except Exception as e:

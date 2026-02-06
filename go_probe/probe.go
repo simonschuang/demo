@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -35,17 +35,16 @@ type ProbeConfig struct {
 type BinaryCodec struct{}
 
 func (bc *BinaryCodec) EncodePacket(opcode byte, payload map[string]interface{}) ([]byte, error) {
-	// Serialize payload using gob
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(payload); err != nil {
+	// Serialize payload using JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
 		return nil, err
 	}
 	
 	// Compress
 	var compressed bytes.Buffer
 	zw := zlib.NewWriter(&compressed)
-	if _, err := zw.Write(buf.Bytes()); err != nil {
+	if _, err := zw.Write(jsonData); err != nil {
 		return nil, err
 	}
 	zw.Close()
@@ -85,10 +84,9 @@ func (bc *BinaryCodec) DecodePacket(raw []byte) (byte, map[string]interface{}, e
 		return 0, nil, err
 	}
 	
-	// Deserialize
+	// Deserialize JSON
 	var payload map[string]interface{}
-	dec := gob.NewDecoder(&decompressed)
-	if err := dec.Decode(&payload); err != nil {
+	if err := json.Unmarshal(decompressed.Bytes(), &payload); err != nil {
 		return 0, nil, err
 	}
 	
@@ -105,9 +103,10 @@ func (mh *MetricsHarvester) GatherMetrics() map[string]interface{} {
 	
 	hostname, _ := os.Hostname()
 	
-	// Custom metric computation using prime number seed
+	// Custom metric computation using time-based entropy
 	seed := time.Now().UnixNano()
-	rand.Seed(seed)
+	// Note: rand is automatically seeded in Go 1.20+
+	_ = seed // Use seed for future entropy calculations if needed
 	
 	return map[string]interface{}{
 		"hostname":      hostname,

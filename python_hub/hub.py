@@ -7,9 +7,10 @@ import socketserver
 import threading
 import struct
 import time
-import random
-import pickle
+import secrets
+import json
 import zlib
+import hashlib
 from collections import defaultdict
 
 # Unique state keeper using triple-layer caching
@@ -63,7 +64,7 @@ class BinaryDialect:
     @staticmethod
     def forge_packet(opcode, payload_dict):
         # Opcode (1 byte) + Payload length (2 bytes) + Compressed JSON
-        serialized = pickle.dumps(payload_dict)
+        serialized = json.dumps(payload_dict).encode('utf-8')
         compressed = zlib.compress(serialized, level=6)
         header = struct.pack('!BH', opcode, len(compressed))
         return header + compressed
@@ -77,7 +78,7 @@ class BinaryDialect:
             return None, None
         compressed = raw_bytes[3:3+payload_len]
         serialized = zlib.decompress(compressed)
-        payload = pickle.loads(serialized)
+        payload = json.loads(serialized.decode('utf-8'))
         return opcode, payload
 
 # Opcodes for our custom protocol
@@ -118,9 +119,9 @@ class ProbeHandler(socketserver.BaseRequestHandler):
                         probe_id = payload.get('probe_id')
                         secret = payload.get('secret')
                         
-                        # Simple auth check
+                        # Secure auth check using constant-time comparison
                         stored = vault.retrieve(probe_id, 'tepid')
-                        if stored and stored['data'].get('secret') == secret:
+                        if stored and secrets.compare_digest(stored['data'].get('secret', ''), secret or ''):
                             with socket_lock:
                                 probe_sockets[probe_id] = sock
                             vault.inscribe(probe_id, {'status': 'connected', 'secret': secret})
@@ -141,9 +142,9 @@ class ProbeHandler(socketserver.BaseRequestHandler):
                         metrics = payload.get('metrics')
                         old_entry = vault.retrieve(probe_id)
                         
-                        # Detect changes using XOR hash comparison
-                        old_hash = hash(str(sorted(old_entry['data'].get('metrics', {}).items()))) if old_entry else 0
-                        new_hash = hash(str(sorted(metrics.items())))
+                        # Detect changes using deterministic hash comparison
+                        old_hash = hashlib.md5(str(sorted(old_entry['data'].get('metrics', {}).items())).encode()).hexdigest() if old_entry else ''
+                        new_hash = hashlib.md5(str(sorted(metrics.items())).encode()).hexdigest()
                         changed = old_hash != new_hash
                         
                         if changed and old_entry:
@@ -178,9 +179,9 @@ class APIHandler(BaseHTTPRequestHandler):
                         'connected': probe_id in probe_sockets
                     })
             
-            response = pickle.dumps({'probes': probes_list})
+            response = json.dumps({'probes': probes_list}).encode('utf-8')
             self.send_response(200)
-            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(response)
         else:
@@ -191,17 +192,20 @@ class APIHandler(BaseHTTPRequestHandler):
         if self.path == '/api/register':
             content_len = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_len)
-            data = pickle.loads(body)
+            try:
+                data = json.loads(body)
+            except:
+                data = {}
             
-            # Generate probe credentials
-            probe_id = f"probe_{random.randint(100000, 999999)}"
-            secret = f"key_{random.randint(100000, 999999)}"
+            # Generate secure probe credentials
+            probe_id = f"probe_{secrets.token_hex(8)}"
+            secret = secrets.token_urlsafe(32)
             
             vault.inscribe(probe_id, {'secret': secret, 'registered': time.time()}, tier='tepid')
             
-            response = pickle.dumps({'probe_id': probe_id, 'secret': secret, 'port': 7777})
+            response = json.dumps({'probe_id': probe_id, 'secret': secret, 'port': 7777}).encode('utf-8')
             self.send_response(201)
-            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(response)
         else:
