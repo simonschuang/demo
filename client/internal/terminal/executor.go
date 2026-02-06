@@ -3,6 +3,7 @@ package terminal
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -171,7 +172,7 @@ func (e *Executor) readOutput(session *Session) {
 	for {
 		n, err := session.PTY.Read(buffer)
 		if err != nil {
-			if err != io.EOF && !session.closed {
+			if !errors.Is(err, io.EOF) && !session.closed {
 				e.logger.Errorf("Failed to read from PTY: %v", err)
 			}
 			break
