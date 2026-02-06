@@ -1,7 +1,7 @@
 # Agent Configuration
-server_url: "localhost:8000"
-client_id: "6b934d73-a3d1-48cc-8988-12de788ec63d"
-client_token: "_23DUyRf6_HGPJSJftaVDWWjBI9TXEj5lcTcUeZV-BY"
+server_url: "localhost:8080"
+client_id: "048c7168-82df-41c2-b32c-8f867e44ee50"
+client_token: "30Ktit3UjyYaoP0PnMKVxrofQvPGwjWJRMUUOwtSvAM"
 
 # WebSocket settings
 ws_scheme: "ws"  # Use "wss" for production

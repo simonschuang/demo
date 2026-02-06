@@ -11,6 +11,7 @@ from app.models.client import Client
 from app.models.inventory import InventoryLatest, InventoryHistory
 from app.redis_client import redis_client
 from app.websocket.manager import connection_manager
+from app.terminal.proxy import terminal_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,15 @@ async def handle_websocket_message(client_id: str, message: dict, db: AsyncSessi
     elif msg_type == "pong":
         # Response to ping, just log
         logger.debug(f"Received pong from {client_id}")
+    elif msg_type == "terminal_output":
+        # Terminal output from client
+        await terminal_proxy.handle_terminal_output(client_id, data)
+    elif msg_type == "terminal_error":
+        # Terminal error from client
+        await terminal_proxy.handle_terminal_error(client_id, data)
+    elif msg_type == "terminal_closed":
+        # Terminal closed by client
+        await terminal_proxy.handle_terminal_closed(client_id, data)
     else:
         logger.warning(f"Unknown message type: {msg_type}")
 

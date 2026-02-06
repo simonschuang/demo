@@ -60,7 +60,7 @@ metadata:
   namespace: agent-system
 data:
   SERVER_HOST: "0.0.0.0"
-  SERVER_PORT: "8000"
+  SERVER_PORT: "8080"
   SERVER_URL: "https://agent.myelintek.com"
   
   # Redis
@@ -146,7 +146,7 @@ spec:
         app: agent-server
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8000"
+        prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
       containers:
@@ -155,7 +155,7 @@ spec:
         imagePullPolicy: Always
         ports:
         - name: http
-          containerPort: 8000
+          containerPort: 8080
           protocol: TCP
         
         # 環境變數
@@ -196,7 +196,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8000
+            port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -205,7 +205,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /readiness
-            port: 8000
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
@@ -245,7 +245,7 @@ spec:
   ports:
   - name: http
     port: 80
-    targetPort: 8000
+    targetPort: 8080
     protocol: TCP
   selector:
     app: agent-server
@@ -531,7 +531,7 @@ spec:
           name: ingress-nginx
     ports:
     - protocol: TCP
-      port: 8000
+      port: 8080
   egress:
   # 允許訪問 Redis
   - to:

@@ -340,7 +340,7 @@ from pydantic import BaseSettings
 class Settings(BaseSettings):
     # Server
     SERVER_HOST: str = "0.0.0.0"
-    SERVER_PORT: int = 8000
+    SERVER_PORT: int = 8080
     SERVER_URL: str = "https://agent.myelintek.com"
     
     # Database

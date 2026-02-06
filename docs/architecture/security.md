@@ -455,7 +455,7 @@ spec:
           name: ingress-nginx
     ports:
     - protocol: TCP
-      port: 8000
+      port: 8080
 ```
 
 #### Ingress Rate Limiting
