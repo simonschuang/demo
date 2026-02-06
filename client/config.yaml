@@ -1,0 +1,19 @@
+# Agent Configuration
+server_url: "localhost:8000"
+client_id: "6b934d73-a3d1-48cc-8988-12de788ec63d"
+client_token: "_23DUyRf6_HGPJSJftaVDWWjBI9TXEj5lcTcUeZV-BY"
+
+# WebSocket settings
+ws_scheme: "ws"  # Use "wss" for production
+ws_path: "/ws"
+
+# Heartbeat settings (seconds)
+heartbeat_interval: 15
+reconnect_interval: 5
+
+# Inventory collection interval (seconds)
+collect_interval: 60
+
+# Logging
+log_level: "debug"  # debug, info, warn, error
+log_file: ""  # Leave empty for stdout
