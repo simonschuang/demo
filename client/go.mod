@@ -3,6 +3,7 @@ module github.com/demo/agent-client
 go 1.21
 
 require (
+	github.com/creack/pty v1.1.21
 	github.com/gorilla/websocket v1.5.1
 	github.com/shirou/gopsutil/v3 v3.24.1
 	github.com/sirupsen/logrus v1.9.3
