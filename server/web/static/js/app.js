@@ -524,6 +524,9 @@ async function showClientDetail(clientId) {
 
     closeModal();
 
+    // Set current page to prevent auto-refresh from overwriting content
+    state.currentPage = 'client-detail';
+
     document.querySelector('.main-content').innerHTML = `
             <div class="page-header">
                 <h1>
@@ -609,14 +612,263 @@ async function showClientDetail(clientId) {
 }
 
 function renderInventorySection(inventory) {
-  const memUsagePercent = Math.round((inventory.memory_used / inventory.memory_total) * 100);
-  const diskUsagePercent = Math.round((inventory.disk_used / inventory.disk_total) * 100);
+  const memUsagePercent = inventory.memory_total ? Math.round((inventory.memory_used / inventory.memory_total) * 100) : 0;
+  const diskUsagePercent = inventory.disk_total ? Math.round((inventory.disk_used / inventory.disk_total) * 100) : 0;
 
   const getProgressClass = (percent) => {
     if (percent < 50) return 'low';
     if (percent < 80) return 'medium';
     return 'high';
   };
+
+  const getHealthBadge = (status) => {
+    if (!status) return '';
+    const statusLower = status.toLowerCase();
+    if (statusLower === 'ok' || statusLower === 'healthy') {
+      return `<span class="badge badge-online">${escapeHtml(status)}</span>`;
+    } else if (statusLower === 'warning') {
+      return `<span class="badge" style="background: var(--warning-color); color: #000;">${escapeHtml(status)}</span>`;
+    } else {
+      return `<span class="badge badge-offline">${escapeHtml(status)}</span>`;
+    }
+  };
+
+  let bmcSection = '';
+  if (inventory.bmc) {
+    const bmc = inventory.bmc;
+
+    // BMC System Info Section
+    bmcSection += `
+        <div class="detail-section" style="grid-column: 1 / -1;">
+            <h3>🖥️ BMC / Hardware Information</h3>
+            <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <div class="detail-item">
+                    <span class="detail-label">BMC Type</span>
+                    <span class="detail-value">${escapeHtml(bmc.bmc_type || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">BMC Version</span>
+                    <span class="detail-value">${escapeHtml(bmc.bmc_version || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">BMC IP</span>
+                    <span class="detail-value">${escapeHtml(bmc.bmc_ip || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Manufacturer</span>
+                    <span class="detail-value">${escapeHtml(bmc.manufacturer || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Model</span>
+                    <span class="detail-value">${escapeHtml(bmc.model || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Serial Number</span>
+                    <span class="detail-value">${escapeHtml(bmc.serial_number || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">SKU</span>
+                    <span class="detail-value">${escapeHtml(bmc.sku || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">BIOS Version</span>
+                    <span class="detail-value">${escapeHtml(bmc.bios_version || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Power State</span>
+                    <span class="detail-value">${escapeHtml(bmc.power_state || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Power Consumption</span>
+                    <span class="detail-value">${bmc.power_consumed_watts ? bmc.power_consumed_watts + ' W' : '-'}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Health Status</span>
+                    <span class="detail-value">${getHealthBadge(bmc.health_status) || '-'}</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Memory Modules Section
+    if (bmc.memory_modules && bmc.memory_modules.length > 0) {
+      const totalMemoryMiB = bmc.memory_modules.reduce((sum, m) => sum + (m.capacity_mib || 0), 0);
+      bmcSection += `
+        <div class="detail-section" style="grid-column: 1 / -1;">
+            <h3>🧠 Memory Modules (${bmc.memory_modules.length} DIMMs, Total: ${formatBytes(totalMemoryMiB * 1024 * 1024)})</h3>
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Slot</th>
+                            <th>Manufacturer</th>
+                            <th>Part Number</th>
+                            <th>Capacity</th>
+                            <th>Speed</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bmc.memory_modules.map(mem => `
+                            <tr>
+                                <td>${escapeHtml(mem.id || '-')}</td>
+                                <td>${escapeHtml(mem.manufacturer || '-')}</td>
+                                <td>${escapeHtml(mem.part_number || '-')}</td>
+                                <td>${mem.capacity_mib ? formatBytes(mem.capacity_mib * 1024 * 1024) : '-'}</td>
+                                <td>${mem.speed_mhz ? mem.speed_mhz + ' MHz' : '-'}</td>
+                                <td>${escapeHtml(mem.memory_type || '-')}</td>
+                                <td>${getHealthBadge(mem.status) || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      `;
+    }
+
+    // Temperature Sensors Section
+    if (bmc.temperatures && bmc.temperatures.length > 0) {
+      bmcSection += `
+        <div class="detail-section">
+            <h3>🌡️ Temperature Sensors</h3>
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Sensor</th>
+                            <th>Reading</th>
+                            <th>Threshold</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bmc.temperatures.map(temp => {
+        const reading = temp.reading_celsius;
+        const threshold = temp.upper_threshold || temp.critical_threshold;
+        let tempClass = '';
+        if (reading && threshold) {
+          if (reading >= threshold * 0.9) tempClass = 'style="color: var(--danger-color);"';
+          else if (reading >= threshold * 0.7) tempClass = 'style="color: var(--warning-color);"';
+        }
+        return `
+                            <tr>
+                                <td>${escapeHtml(temp.name || temp.id || '-')}</td>
+                                <td ${tempClass}>${reading !== null && reading !== undefined ? reading.toFixed(1) + ' °C' : '-'}</td>
+                                <td>${threshold ? threshold.toFixed(1) + ' °C' : '-'}</td>
+                                <td>${getHealthBadge(temp.status) || '-'}</td>
+                            </tr>
+                          `;
+      }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      `;
+    }
+
+    // Fan Speed Section
+    if (bmc.fans && bmc.fans.length > 0) {
+      bmcSection += `
+        <div class="detail-section">
+            <h3>🌀 Fan Status</h3>
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Fan</th>
+                            <th>Speed</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bmc.fans.map(fan => `
+                            <tr>
+                                <td>${escapeHtml(fan.name || fan.id || '-')}</td>
+                                <td>${fan.speed_rpm ? fan.speed_rpm + ' RPM' : (fan.speed_percent ? fan.speed_percent + '%' : '-')}</td>
+                                <td>${getHealthBadge(fan.status) || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      `;
+    }
+
+    // Power Supplies Section
+    if (bmc.power_supplies && bmc.power_supplies.length > 0) {
+      bmcSection += `
+        <div class="detail-section">
+            <h3>⚡ Power Supplies</h3>
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>PSU</th>
+                            <th>Manufacturer</th>
+                            <th>Model</th>
+                            <th>Capacity</th>
+                            <th>Output</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bmc.power_supplies.map(psu => `
+                            <tr>
+                                <td>${escapeHtml(psu.id || '-')}</td>
+                                <td>${escapeHtml(psu.manufacturer || '-')}</td>
+                                <td>${escapeHtml(psu.model || '-')}</td>
+                                <td>${psu.power_capacity_watts ? psu.power_capacity_watts + ' W' : '-'}</td>
+                                <td>${psu.power_output_watts ? psu.power_output_watts + ' W' : '-'}</td>
+                                <td>${getHealthBadge(psu.status) || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      `;
+    }
+
+    // Storage Section
+    if (bmc.storage && bmc.storage.length > 0) {
+      bmcSection += `
+        <div class="detail-section" style="grid-column: 1 / -1;">
+            <h3>💿 Storage (BMC)</h3>
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Drive</th>
+                            <th>Model</th>
+                            <th>Manufacturer</th>
+                            <th>Capacity</th>
+                            <th>Type</th>
+                            <th>Protocol</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bmc.storage.map(drive => `
+                            <tr>
+                                <td>${escapeHtml(drive.name || drive.id || '-')}</td>
+                                <td>${escapeHtml(drive.model || '-')}</td>
+                                <td>${escapeHtml(drive.manufacturer || '-')}</td>
+                                <td>${drive.capacity_gb ? drive.capacity_gb + ' GB' : '-'}</td>
+                                <td>${escapeHtml(drive.media_type || '-')}</td>
+                                <td>${escapeHtml(drive.protocol || '-')}</td>
+                                <td>${getHealthBadge(drive.status) || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      `;
+    }
+  }
 
   return `
         <div class="detail-section">
@@ -679,6 +931,8 @@ function renderInventorySection(inventory) {
                 <span class="detail-value">${formatDate(inventory.collected_at)}</span>
             </div>
         </div>
+        
+        ${bmcSection}
     `;
 }
 

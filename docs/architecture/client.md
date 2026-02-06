@@ -730,6 +730,175 @@ func setupLogger(cfg *config.Config) *logrus.Logger {
 }
 ```
 
+## BMC 模式 (Baseboard Management Controller Mode)
+
+Agent 可以選擇性地綁定到 BMC IP，從 BMC 收集硬體資訊而非從本機收集。這對於需要管理實體伺服器的場景特別有用。
+
+### BMC 設定
+
+**設定檔範例 (config.yaml)**:
+```yaml
+# BMC Configuration (optional)
+bmc:
+  enabled: true                 # 啟用 BMC 模式
+  ip: "192.168.1.100"          # BMC IP 位址
+  username: "admin"            # BMC 使用者名稱
+  password: "password"         # BMC 密碼
+  protocol: "redfish"          # 通訊協定: "redfish" 或 "ipmi"
+  port: 443                    # BMC 端口 (Redfish: 443, IPMI: 623)
+  insecure_skip_verify: true   # 跳過 TLS 證書驗證 (Redfish)
+```
+
+### 支援的協定
+
+#### 1. Redfish API (推薦)
+- 現代標準化的 BMC 管理介面
+- 使用 RESTful API 和 JSON 資料格式
+- 支援 HTTPS 安全連線
+- 預設端口: 443
+
+#### 2. IPMI (Intelligent Platform Management Interface)
+- 傳統的 BMC 管理協定
+- 使用 IPMI over LAN
+- 預設端口: 623
+
+### BMC 資料收集
+
+當啟用 BMC 模式時，Agent 會收集以下資訊：
+
+```go
+type BMCInventory struct {
+    // BMC 基本資訊
+    BMCType       string `json:"bmc_type"`        // BMC 類型 (iDRAC, iLO, BMC, IPMI)
+    BMCVersion    string `json:"bmc_version"`     // BMC 韌體版本
+    BMCIP         string `json:"bmc_ip"`          // BMC IP 位址
+
+    // 系統資訊
+    Manufacturer  string `json:"manufacturer"`    // 製造商
+    Model         string `json:"model"`           // 型號
+    SerialNumber  string `json:"serial_number"`   // 序號
+    BIOSVersion   string `json:"bios_version"`    // BIOS 版本
+
+    // 處理器資訊
+    Processors    []ProcessorInfo `json:"processors"`
+
+    // 記憶體資訊
+    MemoryTotal   uint64        `json:"memory_total"`
+    MemoryModules []MemoryInfo  `json:"memory_modules"`
+
+    // 儲存資訊
+    Storage       []StorageInfo `json:"storage"`
+
+    // 網路介面
+    NetworkPorts  []NetworkPortInfo `json:"network_ports"`
+
+    // 電源狀態
+    PowerState    string      `json:"power_state"`
+    PowerSupplies []PowerInfo `json:"power_supplies"`
+
+    // 散熱資訊
+    Fans          []FanInfo      `json:"fans"`
+    Temperatures  []TempInfo     `json:"temperatures"`
+
+    // 健康狀態
+    HealthStatus  string `json:"health_status"`
+}
+```
+
+### BMC Collector 實作
+
+```go
+// inventory/bmc.go
+package inventory
+
+type BMCConfig struct {
+    Enabled            bool   `mapstructure:"enabled"`
+    IP                 string `mapstructure:"ip"`
+    Username           string `mapstructure:"username"`
+    Password           string `mapstructure:"password"`
+    Protocol           string `mapstructure:"protocol"`       // "redfish" or "ipmi"
+    Port               int    `mapstructure:"port"`
+    InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify"`
+}
+
+type BMCCollector struct {
+    config *BMCConfig
+    logger *logrus.Logger
+}
+
+func NewBMCCollector(cfg *BMCConfig, logger *logrus.Logger) *BMCCollector {
+    return &BMCCollector{
+        config: cfg,
+        logger: logger,
+    }
+}
+
+func (c *BMCCollector) Collect() (*BMCInventory, error) {
+    switch c.config.Protocol {
+    case "redfish":
+        return c.collectViaRedfish()
+    case "ipmi":
+        return c.collectViaIPMI()
+    default:
+        return nil, fmt.Errorf("unsupported protocol: %s", c.config.Protocol)
+    }
+}
+```
+
+### Redfish 收集實作
+
+```go
+func (c *BMCCollector) collectViaRedfish() (*BMCInventory, error) {
+    // 建立 HTTP Client
+    client := &http.Client{
+        Transport: &http.Transport{
+            TLSClientConfig: &tls.Config{
+                InsecureSkipVerify: c.config.InsecureSkipVerify,
+            },
+        },
+        Timeout: 30 * time.Second,
+    }
+
+    baseURL := fmt.Sprintf("https://%s:%d", c.config.IP, c.config.Port)
+    
+    // 取得系統資訊
+    systemInfo, _ := c.getRedfishResource(client, baseURL, "/redfish/v1/Systems/1")
+    
+    // 取得處理器資訊
+    processors, _ := c.getRedfishCollection(client, baseURL, "/redfish/v1/Systems/1/Processors")
+    
+    // 取得記憶體資訊
+    memory, _ := c.getRedfishCollection(client, baseURL, "/redfish/v1/Systems/1/Memory")
+    
+    // 取得儲存資訊
+    storage, _ := c.getRedfishCollection(client, baseURL, "/redfish/v1/Systems/1/Storage")
+    
+    // 組合 Inventory
+    return &BMCInventory{
+        // ... 填充資料
+    }, nil
+}
+```
+
+### 混合模式
+
+Agent 支援同時收集本機資訊和 BMC 資訊：
+
+```yaml
+# 啟用混合模式
+bmc:
+  enabled: true
+  ip: "192.168.1.100"
+  # ... BMC 設定
+  
+# 本機收集仍然會執行
+collect_interval: 60
+```
+
+在混合模式下，Inventory 會包含兩部分資料：
+- `local`: 本機系統資訊
+- `bmc`: BMC 收集的硬體資訊
+
 ## 效能與資源使用
 
 ### 資源使用目標
@@ -742,3 +911,4 @@ func setupLogger(cfg *config.Config) *logrus.Logger {
 - Inventory 收集使用快取，避免重複收集
 - WebSocket 訊息使用壓縮 (可選)
 - 日誌輪轉避免檔案過大
+- BMC 收集可設定較長的間隔 (硬體資訊變化較少)

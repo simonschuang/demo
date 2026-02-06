@@ -1,7 +1,7 @@
 # Agent Configuration
 server_url: "localhost:8080"
-client_id: "048c7168-82df-41c2-b32c-8f867e44ee50"
-client_token: "30Ktit3UjyYaoP0PnMKVxrofQvPGwjWJRMUUOwtSvAM"
+client_id: "c86a2735-a396-4702-96df-f3647fd73416"
+client_token: "XfczFh3udC9FHbGh79asJlqG0UiACBadQh3dKKX76fQ"
 
 # WebSocket settings
 ws_scheme: "ws"  # Use "wss" for production
@@ -13,6 +13,18 @@ reconnect_interval: 5
 
 # Inventory collection interval (seconds)
 collect_interval: 60
+
+# BMC Configuration (optional)
+# When enabled, the agent will collect hardware information from the BMC
+# instead of or in addition to the local host
+bmc:
+  enabled: true              # Set to true to enable BMC collection
+  ip: "100.74.5.221"                      # BMC IP address (e.g., "192.168.1.100")
+  username: "admin"                # BMC username
+  password: "OGBP7900018"                # BMC password
+  protocol: "redfish"         # Protocol: "redfish" or "ipmi"
+  port: 443                   # BMC port (Redfish: 443, IPMI: 623)
+  insecure_skip_verify: true  # Skip TLS certificate verification
 
 # Logging
 log_level: "debug"  # debug, info, warn, error

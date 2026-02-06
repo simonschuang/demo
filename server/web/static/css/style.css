@@ -473,6 +473,33 @@ body {
   background-color: var(--danger-color);
 }
 
+/* BMC Section Styles */
+.detail-section[style*="grid-column: 1 / -1"] {
+  grid-column: 1 / -1;
+}
+
+.detail-section .table {
+  margin-top: 0.5rem;
+}
+
+.detail-section .table th {
+  background-color: var(--light-bg);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-section .table td {
+  vertical-align: middle;
+}
+
+.detail-section .detail-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
