@@ -9,7 +9,7 @@
 下載 install.sh
         |
         v
-執行 install.sh
+執行 install.sh (帶入認證 token)
         |
         ├─> 檢查系統環境 (OS, ARCH)
         ├─> 下載對應的 Agent Binary
@@ -46,357 +46,35 @@
 
 ### 功能需求
 1. **不使用** curl | sh pipe 安裝方式
-2. 自動偵測 OS 和 ARCH
-3. 下載對應的 Agent Binary
-4. 產生設定檔和執行腳本
-5. 註冊 Client 到 Server
-6. 提供清楚的安裝進度和錯誤訊息
+2. 從 Web UI 下載 install.sh，並在執行時提供認證 token
+3. 自動偵測 OS 和 ARCH
+4. 下載對應的 Agent Binary
+5. 產生設定檔和執行腳本
+6. 註冊 Client 到 Server
+7. 提供清楚的安裝進度和錯誤訊息
 
-### 腳本範本
+### 腳本設計要點
+
+install.sh 腳本應包含以下主要功能：
+
+- **認證機制**: 執行時需要帶入認證 token 作為參數
+- **系統偵測**: 自動偵測作業系統和架構
+- **Binary 下載**: 從 Server 下載對應版本的 Agent
+- **設定產生**: 自動產生 config.yaml 設定檔
+- **腳本產生**: 產生 run.sh 和 svc.sh 管理腳本
+- **Client 註冊**: 向 Server 註冊並取得 client token
+- **錯誤處理**: 完整的錯誤檢查和使用者提示
+
+### 執行範例
 
 ```bash
-#!/bin/bash
-# Agent Installation Script
-# Version: 1.0.0
-# Generated for user: {USER_ID}
+# 從 Web UI 下載 install.sh
+wget https://agent.myelintek.com/download/install.sh
 
-set -e
-
-# ==================== Configuration ====================
-AGENT_VERSION="v1.0.0"
-SERVER_URL="https://agent.example.com"
-USER_TOKEN="{USER_TOKEN}"  # 由 Server 在產生腳本時嵌入
-INSTALL_DIR="/opt/agent"
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# ==================== Functions ====================
-
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-    exit 1
-}
-
-detect_os() {
-    case "$(uname -s)" in
-        Linux*)     OS="linux";;
-        Darwin*)    OS="darwin";;
-        MINGW*|MSYS*|CYGWIN*)    OS="windows";;
-        *)          log_error "Unsupported OS: $(uname -s)";;
-    esac
-    echo "$OS"
-}
-
-detect_arch() {
-    case "$(uname -m)" in
-        x86_64)     ARCH="amd64";;
-        aarch64|arm64)    ARCH="arm64";;
-        i386|i686)  ARCH="386";;
-        *)          log_error "Unsupported architecture: $(uname -m)";;
-    esac
-    echo "$ARCH"
-}
-
-check_requirements() {
-    log_info "Checking requirements..."
-    
-    # Check if running as root or with sudo
-    if [ "$EUID" -ne 0 ]; then 
-        log_error "Please run as root or with sudo"
-    fi
-    
-    # Check required commands
-    for cmd in curl tar mkdir; do
-        if ! command -v $cmd &> /dev/null; then
-            log_error "Required command not found: $cmd"
-        fi
-    done
-}
-
-download_agent() {
-    local os=$1
-    local arch=$2
-    local version=$3
-    
-    log_info "Downloading agent for ${os}/${arch} (${version})..."
-    
-    local binary_name="agent-${os}-${arch}"
-    if [ "$os" = "windows" ]; then
-        binary_name="${binary_name}.exe"
-    fi
-    
-    local download_url="${SERVER_URL}/api/v1/download/agent/${os}/${arch}/${version}?token=${USER_TOKEN}"
-    
-    # Download binary
-    if ! curl -L -f -o "${INSTALL_DIR}/bin/agent" "${download_url}"; then
-        log_error "Failed to download agent binary"
-    fi
-    
-    chmod +x "${INSTALL_DIR}/bin/agent"
-    log_info "Agent binary downloaded successfully"
-}
-
-generate_client_id() {
-    # Generate UUID for client_id
-    if command -v uuidgen &> /dev/null; then
-        CLIENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
-    else
-        CLIENT_ID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo $(date +%s%N | md5sum | cut -c1-32))"
-    fi
-    
-    echo "$CLIENT_ID" > "${INSTALL_DIR}/data/client_id.txt"
-    echo "$CLIENT_ID"
-}
-
-register_client() {
-    local client_id=$1
-    
-    log_info "Registering client to server..."
-    
-    local hostname=$(hostname)
-    local register_url="${SERVER_URL}/api/v1/clients/register"
-    
-    local response=$(curl -s -X POST "${register_url}" \
-        -H "Authorization: Bearer ${USER_TOKEN}" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"client_id\": \"${client_id}\",
-            \"hostname\": \"${hostname}\",
-            \"os\": \"${OS}\",
-            \"arch\": \"${ARCH}\"
-        }")
-    
-    if [ $? -ne 0 ]; then
-        log_error "Failed to register client"
-    fi
-    
-    # Extract client_token from response
-    CLIENT_TOKEN=$(echo "$response" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
-    
-    if [ -z "$CLIENT_TOKEN" ]; then
-        log_error "Failed to get client token from server"
-    fi
-    
-    log_info "Client registered successfully"
-}
-
-generate_config() {
-    local client_id=$1
-    local client_token=$2
-    
-    log_info "Generating configuration file..."
-    
-    cat > "${INSTALL_DIR}/config/config.yaml" <<EOF
-# Agent Configuration
-server_url: "${SERVER_URL##https://}"
-client_id: "${client_id}"
-client_token: "${client_token}"
-ws_scheme: "wss"
-ws_path: "/ws"
-
-# Intervals (seconds)
-heartbeat_interval: 15
-reconnect_interval: 5
-collect_interval: 60
-
-# Logging
-log_level: "info"
-log_file: "${INSTALL_DIR}/logs/agent.log"
-EOF
-    
-    log_info "Configuration file created"
-}
-
-generate_run_script() {
-    log_info "Generating run.sh script..."
-    
-    cat > "${INSTALL_DIR}/scripts/run.sh" <<'EOF'
-#!/bin/bash
-# Agent Run Script (Foreground)
-
-INSTALL_DIR="/opt/agent"
-AGENT_BIN="${INSTALL_DIR}/bin/agent"
-CONFIG_FILE="${INSTALL_DIR}/config/config.yaml"
-
-# Check if agent binary exists
-if [ ! -f "$AGENT_BIN" ]; then
-    echo "Error: Agent binary not found at $AGENT_BIN"
-    exit 1
-fi
-
-# Check if config file exists
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Config file not found at $CONFIG_FILE"
-    exit 1
-fi
-
-# Run agent
-echo "Starting agent..."
-"$AGENT_BIN" -config "$CONFIG_FILE"
-EOF
-    
-    chmod +x "${INSTALL_DIR}/scripts/run.sh"
-    log_info "run.sh created"
-}
-
-generate_svc_script() {
-    log_info "Generating svc.sh script..."
-    
-    cat > "${INSTALL_DIR}/scripts/svc.sh" <<'EOF'
-#!/bin/bash
-# Agent Service Management Script
-
-INSTALL_DIR="/opt/agent"
-SERVICE_NAME="agent"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-
-case "$1" in
-    install)
-        echo "Installing ${SERVICE_NAME} service..."
-        
-        # Create systemd service file
-        cat > "$SERVICE_FILE" <<SERVICEEOF
-[Unit]
-Description=Agent Service
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/bin/agent -config ${INSTALL_DIR}/config/config.yaml
-Restart=always
-RestartSec=5
-StandardOutput=append:${INSTALL_DIR}/logs/agent.log
-StandardError=append:${INSTALL_DIR}/logs/agent.log
-
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
-        
-        # Reload systemd and enable service
-        systemctl daemon-reload
-        systemctl enable ${SERVICE_NAME}
-        
-        echo "${SERVICE_NAME} service installed successfully"
-        echo "Use './svc.sh start' to start the service"
-        ;;
-        
-    uninstall)
-        echo "Uninstalling ${SERVICE_NAME} service..."
-        systemctl stop ${SERVICE_NAME}
-        systemctl disable ${SERVICE_NAME}
-        rm -f "$SERVICE_FILE"
-        systemctl daemon-reload
-        echo "${SERVICE_NAME} service uninstalled"
-        ;;
-        
-    start)
-        echo "Starting ${SERVICE_NAME} service..."
-        systemctl start ${SERVICE_NAME}
-        systemctl status ${SERVICE_NAME}
-        ;;
-        
-    stop)
-        echo "Stopping ${SERVICE_NAME} service..."
-        systemctl stop ${SERVICE_NAME}
-        ;;
-        
-    restart)
-        echo "Restarting ${SERVICE_NAME} service..."
-        systemctl restart ${SERVICE_NAME}
-        systemctl status ${SERVICE_NAME}
-        ;;
-        
-    status)
-        systemctl status ${SERVICE_NAME}
-        ;;
-        
-    logs)
-        tail -f ${INSTALL_DIR}/logs/agent.log
-        ;;
-        
-    *)
-        echo "Usage: $0 {install|uninstall|start|stop|restart|status|logs}"
-        exit 1
-        ;;
-esac
-EOF
-    
-    chmod +x "${INSTALL_DIR}/scripts/svc.sh"
-    log_info "svc.sh created"
-}
-
-# ==================== Main Installation ====================
-
-main() {
-    echo "========================================"
-    echo "  Agent Installation Script"
-    echo "  Version: ${AGENT_VERSION}"
-    echo "========================================"
-    echo ""
-    
-    # Check requirements
-    check_requirements
-    
-    # Detect system
-    OS=$(detect_os)
-    ARCH=$(detect_arch)
-    log_info "Detected system: ${OS}/${ARCH}"
-    
-    # Create directories
-    log_info "Creating installation directories..."
-    mkdir -p "${INSTALL_DIR}"/{bin,config,logs,scripts,data}
-    
-    # Download agent binary
-    download_agent "$OS" "$ARCH" "$AGENT_VERSION"
-    
-    # Generate client ID
-    CLIENT_ID=$(generate_client_id)
-    log_info "Generated Client ID: ${CLIENT_ID}"
-    
-    # Register client to server
-    register_client "$CLIENT_ID"
-    
-    # Generate configuration
-    generate_config "$CLIENT_ID" "$CLIENT_TOKEN"
-    
-    # Generate run scripts
-    generate_run_script
-    generate_svc_script
-    
-    echo ""
-    echo "========================================"
-    echo "  Installation Complete!"
-    echo "========================================"
-    echo ""
-    echo "Installation directory: ${INSTALL_DIR}"
-    echo "Client ID: ${CLIENT_ID}"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Run in foreground:"
-    echo "     cd ${INSTALL_DIR}/scripts && ./run.sh"
-    echo ""
-    echo "  2. Or install as systemd service:"
-    echo "     cd ${INSTALL_DIR}/scripts && ./svc.sh install"
-    echo "     ./svc.sh start"
-    echo ""
-}
-
-main "$@"
+# 執行安裝，帶入從 Web UI 取得的認證 token
+sudo bash install.sh --token YOUR_AUTH_TOKEN
 ```
+
 
 ## run.sh 設計
 
@@ -582,7 +260,7 @@ async def generate_install_script(
 ### 手動升級
 ```bash
 # 下載新版本安裝腳本
-wget https://agent.example.com/download/install.sh
+wget https://agent.myelintek.com/download/install.sh
 
 # 執行安裝 (會自動偵測並升級)
 sudo ./install.sh

@@ -14,7 +14,7 @@ wss://{server_domain}/ws/{client_id}?token={auth_token}
 
 **範例**:
 ```
-wss://agent.example.com/ws/550e8400-e29b-41d4-a716-446655440000?token=eyJhbGc...
+wss://agent.myelintek.com/ws/550e8400-e29b-41d4-a716-446655440000?token=eyJhbGc...
 ```
 
 ### 連線流程

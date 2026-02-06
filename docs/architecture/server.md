@@ -341,7 +341,7 @@ class Settings(BaseSettings):
     # Server
     SERVER_HOST: str = "0.0.0.0"
     SERVER_PORT: int = 8000
-    SERVER_URL: str = "https://agent.example.com"
+    SERVER_URL: str = "https://agent.myelintek.com"
     
     # Database
     DATABASE_URL: str = "postgresql://user:pass@db:5432/agentdb"

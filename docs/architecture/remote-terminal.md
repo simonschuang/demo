@@ -61,7 +61,7 @@
 #### 技術選型
 - **終端模擬器**: xterm.js (https://xtermjs.org/)
 - **WebSocket 客戶端**: 瀏覽器原生 WebSocket API
-- **UI 框架**: React / Vue.js (依專案選擇)
+- **UI 框架**: Vue.js
 
 #### HTML/JavaScript 範例
 

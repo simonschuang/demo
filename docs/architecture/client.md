@@ -109,7 +109,7 @@ func LoadConfig(configPath string) (*Config, error) {
 
 **設定檔範例 (config.yaml)**:
 ```yaml
-server_url: "agent.example.com"
+server_url: "agent.myelintek.com"
 client_id: "client-uuid-xxxx"
 client_token: "token-xxxx-xxxx"
 ws_scheme: "wss"
