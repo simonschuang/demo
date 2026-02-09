@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User
 from app.models.client import Client
-from app.models.inventory import InventoryLatest, InventoryHistory
+from app.models.inventory import InventoryLatest, InventoryHistory, PowerHistory
 from app.schemas.inventory import InventoryResponse, BMCInfo
 from app.auth import get_current_user
 
@@ -148,6 +148,64 @@ async def get_inventory_history(
                 "id": h.id,
                 "inventory_data": h.inventory_data,
                 "collected_at": h.collected_at.isoformat() if h.collected_at else None
+            }
+            for h in history
+        ]
+    }
+
+
+@router.get("/{client_id}/power/history")
+async def get_power_history(
+    client_id: str,
+    hours: int = 24,
+    limit: int = 500,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get power consumption history for charting"""
+    from datetime import datetime, timedelta
+    
+    # Verify client belongs to user
+    result = await db.execute(
+        select(Client).where(
+            Client.id == client_id,
+            Client.user_id == current_user.id
+        )
+    )
+    client = result.scalar_one_or_none()
+    
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+    
+    # Calculate time range
+    since = datetime.utcnow() - timedelta(hours=hours)
+    
+    # Get power history
+    result = await db.execute(
+        select(PowerHistory)
+        .where(
+            PowerHistory.client_id == client_id,
+            PowerHistory.recorded_at >= since
+        )
+        .order_by(PowerHistory.recorded_at.asc())
+        .limit(limit)
+    )
+    history = result.scalars().all()
+    
+    return {
+        "client_id": str(client_id),
+        "since": since.isoformat(),
+        "total": len(history),
+        "data": [
+            {
+                "timestamp": h.recorded_at.isoformat() if h.recorded_at else None,
+                "power_watts": h.power_consumed_watts,
+                "avg_watts": h.avg_power_watts,
+                "min_watts": h.min_power_watts,
+                "max_watts": h.max_power_watts
             }
             for h in history
         ]

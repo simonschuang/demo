@@ -2,6 +2,7 @@
 package websocket
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -78,6 +79,9 @@ func (c *Client) Connect() error {
 
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: c.config.InsecureSkipVerify,
+		},
 	}
 
 	conn, _, err := dialer.Dial(url, nil)

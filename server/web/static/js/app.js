@@ -10,7 +10,10 @@ const state = {
   token: localStorage.getItem('token'),
   user: null,
   clients: [],
-  currentPage: 'dashboard'
+  currentPage: 'dashboard',
+  detailPollInterval: null,
+  detailPollTimer: null,
+  currentClientId: null
 };
 
 // Utility Functions
@@ -36,6 +39,36 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// Copy to clipboard utility function
+function copyToClipboard(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = el.textContent;
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(text).then(() => {
+      el.style.background = '#e0ffe0';
+      setTimeout(() => { el.style.background = ''; }, 500);
+    }).catch(() => fallbackCopyTextToClipboard(text, el));
+  } else {
+    fallbackCopyTextToClipboard(text, el);
+  }
+}
+
+function fallbackCopyTextToClipboard(text, el) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    el.style.background = '#e0ffe0';
+    setTimeout(() => { el.style.background = ''; }, 500);
+  } catch (err) {
+    alert('Copy failed');
+  }
+  document.body.removeChild(textarea);
 }
 
 // API Functions
@@ -145,6 +178,19 @@ async function getInventoryHistory(clientId, limit = 10) {
   return await apiRequest(`/inventory/${clientId}/history?limit=${limit}`);
 }
 
+async function getPowerHistory(clientId, hours = 24) {
+  return await apiRequest(`/inventory/${clientId}/power/history?hours=${hours}`);
+}
+
+// Version Functions
+async function getServerVersion() {
+  try {
+    return await apiRequest('/version');
+  } catch (e) {
+    return { version: 'unknown' };
+  }
+}
+
 // UI Functions
 function showLoginPage() {
   document.getElementById('app').innerHTML = `
@@ -251,6 +297,10 @@ async function handleRegister(e) {
 }
 
 async function showDashboard() {
+  // Stop any detail page polling when navigating away
+  stopDetailPolling();
+  state.currentClientId = null;
+
   try {
     const user = await getCurrentUser();
     const clientsData = await getClients();
@@ -310,9 +360,20 @@ async function showDashboard() {
         `;
 
     state.currentPage = 'dashboard';
+
+    // Load version info
+    loadVersionInfo();
   } catch (error) {
     console.error('Dashboard error:', error);
     showLoginPage();
+  }
+}
+
+async function loadVersionInfo() {
+  const versionEl = document.getElementById('versionInfo');
+  if (versionEl) {
+    const version = await getServerVersion();
+    versionEl.textContent = `Server v${version.version}`;
   }
 }
 
@@ -337,6 +398,7 @@ function renderSidebar(user) {
                 <button class="btn btn-sm btn-danger mt-1" onclick="logout()" style="width: 100%;">
                     Logout
                 </button>
+                <div id="versionInfo" style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted); text-align: center;"></div>
             </div>
         </aside>
     `;
@@ -431,7 +493,7 @@ function showCreateClientModal() {
             </p>
             <div class="form-group">
                 <label for="clientName">Client Name (optional)</label>
-                <input type="text" id="clientName" class="form-control" placeholder="Enter a friendly name for this client">
+                <input type="text" id="clientName" class="form-control" placeholder="Enter a friendly name for this client" autofocus>
             </div>
         </form>
         <div id="createClientError" class="alert alert-danger mt-2" style="display: none;"></div>
@@ -439,10 +501,37 @@ function showCreateClientModal() {
 
   const footer = `
         <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="handleCreateClient()">Create Client</button>
+        <button class="btn btn-primary" id="createClientBtn" type="button">Create Client</button>
     `;
 
   showModal('Create New Client', body, footer);
+
+
+  // Autofocus the input after modal is visible
+  setTimeout(() => {
+    const input = document.getElementById('clientName');
+    if (input) {
+      input.focus();
+      // Fallback: try again after a short delay in case modal animation delays rendering
+      setTimeout(() => {
+        if (document.activeElement !== input) input.focus();
+      }, 100);
+    }
+  }, 10);
+
+  // Submit on Enter key
+  const form = document.getElementById('createClientForm');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      handleCreateClient();
+    });
+  }
+  // Also allow button click
+  const btn = document.getElementById('createClientBtn');
+  if (btn) {
+    btn.addEventListener('click', handleCreateClient);
+  }
 }
 
 async function handleCreateClient() {
@@ -463,19 +552,30 @@ async function handleCreateClient() {
 }
 
 function showClientCreatedModal(client) {
+
   const body = `
-        <div class="alert alert-success">Client created successfully!</div>
-        <div class="detail-item">
-            <span class="detail-label">Client ID</span>
-            <span class="detail-value"><code>${client.id}</code></span>
-        </div>
-        <div class="detail-item">
-            <span class="detail-label">Client Token</span>
-            <span class="detail-value"><code style="word-break: break-all;">${client.client_token}</code></span>
-        </div>
-        <p class="mt-2" style="color: var(--text-muted); font-size: 0.875rem;">
-            ⚠️ Save the client token! You will need it to connect the agent.
-        </p>
+      <div class="alert alert-success">Client created successfully!</div>
+      <div class="detail-item">
+        <span class="detail-label">Client ID</span>
+        <span class="detail-value">
+          <code id="clientIdValue">${client.id}</code>
+          <button class="copy-btn" title="Copy Client ID" onclick="copyToClipboard('clientIdValue')" style="margin-left: 0.5em; border: none; background: none; cursor: pointer; font-size: 1em;">
+            📋
+          </button>
+        </span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">Client Token</span>
+        <span class="detail-value">
+          <code id="clientTokenValue" style="word-break: break-all;">${client.client_token}</code>
+          <button class="copy-btn" title="Copy Client Token" onclick="copyToClipboard('clientTokenValue')" style="margin-left: 0.5em; border: none; background: none; cursor: pointer; font-size: 1em;">
+            📋
+          </button>
+        </span>
+      </div>
+      <p class="mt-2" style="color: var(--text-muted); font-size: 0.875rem;">
+        ⚠️ Save the client token! You will need it to connect the agent.
+      </p>
     `;
 
   const footer = `
@@ -527,52 +627,66 @@ async function showClientDetail(clientId) {
     // Set current page to prevent auto-refresh from overwriting content
     state.currentPage = 'client-detail';
 
+    // Store current client ID for polling
+    state.currentClientId = clientId;
+
     document.querySelector('.main-content').innerHTML = `
             <div class="page-header">
                 <h1>
-                    <a href="#" onclick="showDashboard(); return false;" style="color: var(--text-muted); text-decoration: none;">←</a>
+                    <a href="#" onclick="stopDetailPolling(); showDashboard(); return false;" style="color: var(--text-muted); text-decoration: none;">←</a>
                     ${escapeHtml(client.hostname)}
                 </h1>
-                <span class="badge ${getStatusClass(client.status)}">
-                    <span class="badge-dot"></span>
-                    ${client.status}
-                </span>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <label for="pollInterval" style="font-size: 0.875rem; color: var(--text-muted);">Auto-refresh:</label>
+                        <select id="pollInterval" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.875rem;" onchange="setDetailPollingInterval(this.value, '${clientId}')">
+                            <option value="0">Off</option>
+                            <option value="5000">5s</option>
+                            <option value="10000">10s</option>
+                            <option value="30000">30s</option>
+                            <option value="60000">60s</option>
+                        </select>
+                        <span id="pollStatus" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+                    </div>
+                    <span class="badge ${getStatusClass(client.status)}">
+                        <span class="badge-dot"></span>
+                        ${client.status}
+                    </span>
+                </div>
             </div>
             
             <div class="detail-grid">
-                <div class="detail-section">
+                <div class="detail-section" style="grid-column: 1 / -1;">
                     <h3>📋 Client Information</h3>
-                    <div class="detail-item">
-                        <span class="detail-label">Client ID</span>
-                        <span class="detail-value"><code>${client.id}</code></span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Hostname</span>
-                        <span class="detail-value">${escapeHtml(client.hostname)}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Operating System</span>
-                        <span class="detail-value">${escapeHtml(client.os || '-')}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Platform</span>
-                        <span class="detail-value">${escapeHtml(client.platform || '-')}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Architecture</span>
-                        <span class="detail-value">${escapeHtml(client.arch || '-')}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Agent Version</span>
-                        <span class="detail-value">${escapeHtml(client.agent_version || '-')}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Last Seen</span>
-                        <span class="detail-value">${formatDate(client.last_seen)}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Created At</span>
-                        <span class="detail-value">${formatDate(client.created_at)}</span>
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="detail-item">
+                            <span class="detail-label">Hostname</span>
+                            <span class="detail-value">${escapeHtml(client.hostname)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Operating System</span>
+                            <span class="detail-value">${escapeHtml(client.os || '-')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Platform</span>
+                            <span class="detail-value">${escapeHtml(client.platform || '-')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Architecture</span>
+                            <span class="detail-value">${escapeHtml(client.arch || '-')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Agent Version</span>
+                            <span class="detail-value">${escapeHtml(client.agent_version || '-')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Last Seen</span>
+                            <span class="detail-value">${formatDate(client.last_seen)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Registered At</span>
+                            <span class="detail-value">${formatDate(client.registered_at)}</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -603,11 +717,122 @@ async function showClientDetail(clientId) {
                     </button>
                 </div>
             </div>
+            
+            <div class="card mt-2">
+                <div class="card-header">
+                    <h2>🔑 Client Credentials</h2>
+                </div>
+                <div class="card-body">
+                    <div class="detail-item">
+                        <span class="detail-label">Client ID</span>
+                        <span class="detail-value">
+                            <code id="detailClientId">${client.id}</code>
+                            <button class="copy-btn" title="Copy Client ID" onclick="copyToClipboard('detailClientId')" style="margin-left: 0.5em; border: none; background: none; cursor: pointer; font-size: 1em;">
+                              📋
+                            </button>
+                        </span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Client Token</span>
+                        <span class="detail-value">
+                            <code id="detailClientToken" style="word-break: break-all;">${client.client_token || '••••••••'}</code>
+                            ${client.client_token ? `
+                            <button class="copy-btn" title="Copy Client Token" onclick="copyToClipboard('detailClientToken')" style="margin-left: 0.5em; border: none; background: none; cursor: pointer; font-size: 1em;">
+                              📋
+                            </button>
+                            ` : '<span style="color: var(--text-muted); font-size: 0.875rem; margin-left: 0.5em;">(Use "Regenerate Token" to get a new token)</span>'}
+                        </span>
+                    </div>
+                </div>
+            </div>
             ${renderModal()}
         `;
+
+    // Load power chart if inventory data exists
+    if (inventory) {
+      loadPowerChart(clientId);
+    }
+
+    // Restore polling interval if previously set
+    if (state.detailPollInterval) {
+      const select = document.getElementById('pollInterval');
+      if (select) {
+        select.value = state.detailPollInterval;
+        startDetailPolling(state.detailPollInterval, clientId);
+      }
+    }
   } catch (error) {
     closeModal();
     alert('Failed to load client details: ' + error.message);
+  }
+}
+
+// Polling functions for client detail page
+function setDetailPollingInterval(interval, clientId) {
+  state.detailPollInterval = parseInt(interval);
+  stopDetailPolling();
+
+  if (state.detailPollInterval > 0) {
+    startDetailPolling(state.detailPollInterval, clientId);
+  } else {
+    updatePollStatus('');
+  }
+}
+
+function startDetailPolling(interval, clientId) {
+  stopDetailPolling();
+
+  if (interval > 0 && state.currentPage === 'client-detail') {
+    updatePollStatus('Polling...');
+    state.detailPollTimer = setInterval(async () => {
+      if (state.currentPage !== 'client-detail' || state.currentClientId !== clientId) {
+        stopDetailPolling();
+        return;
+      }
+      await refreshInventoryData(clientId);
+    }, interval);
+  }
+}
+
+function stopDetailPolling() {
+  if (state.detailPollTimer) {
+    clearInterval(state.detailPollTimer);
+    state.detailPollTimer = null;
+  }
+  updatePollStatus('');
+}
+
+function updatePollStatus(text) {
+  const statusEl = document.getElementById('pollStatus');
+  if (statusEl) {
+    statusEl.textContent = text;
+  }
+}
+
+async function refreshInventoryData(clientId) {
+  try {
+    updatePollStatus('Refreshing...');
+    const inventory = await getInventory(clientId);
+
+    // Update the inventory sections in place
+    const detailGrid = document.querySelector('.detail-grid');
+    if (detailGrid && inventory) {
+      // Keep the first detail-section (Client Information) and replace the rest
+      const clientInfoSection = detailGrid.querySelector('.detail-section');
+      detailGrid.innerHTML = '';
+      if (clientInfoSection) {
+        detailGrid.appendChild(clientInfoSection);
+      }
+      detailGrid.innerHTML += renderInventorySection(inventory);
+
+      // Reload power chart after refreshing inventory
+      loadPowerChart(clientId);
+    }
+
+    updatePollStatus(`Last updated: ${new Date().toLocaleTimeString()}`);
+  } catch (e) {
+    console.error('Failed to refresh inventory:', e);
+    updatePollStatus('Refresh failed');
   }
 }
 
@@ -797,41 +1022,6 @@ function renderInventorySection(inventory) {
       `;
     }
 
-    // Power Supplies Section
-    if (bmc.power_supplies && bmc.power_supplies.length > 0) {
-      bmcSection += `
-        <div class="detail-section">
-            <h3>⚡ Power Supplies</h3>
-            <div class="table-responsive">
-                <table class="table" style="font-size: 0.85rem;">
-                    <thead>
-                        <tr>
-                            <th>PSU</th>
-                            <th>Manufacturer</th>
-                            <th>Model</th>
-                            <th>Capacity</th>
-                            <th>Output</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${bmc.power_supplies.map(psu => `
-                            <tr>
-                                <td>${escapeHtml(psu.id || '-')}</td>
-                                <td>${escapeHtml(psu.manufacturer || '-')}</td>
-                                <td>${escapeHtml(psu.model || '-')}</td>
-                                <td>${psu.power_capacity_watts ? psu.power_capacity_watts + ' W' : '-'}</td>
-                                <td>${psu.power_output_watts ? psu.power_output_watts + ' W' : '-'}</td>
-                                <td>${getHealthBadge(psu.status) || '-'}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-      `;
-    }
-
     // Storage Section
     if (bmc.storage && bmc.storage.length > 0) {
       bmcSection += `
@@ -932,8 +1122,205 @@ function renderInventorySection(inventory) {
             </div>
         </div>
         
+        <div class="detail-section" style="grid-column: 1 / -1;">
+            <h3>⚡ Power Consumption</h3>
+            <div id="powerChartContainer" style="position: relative; min-height: 200px;">
+                <div style="display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted);">
+                    Loading chart...
+                </div>
+            </div>
+        </div>
+        
         ${bmcSection}
     `;
+}
+
+// Power consumption chart instance
+let powerChart = null;
+let powerChartData = null; // Store data for download
+
+function downloadPowerData() {
+  if (!powerChartData || powerChartData.length === 0) {
+    alert('No power data available to download');
+    return;
+  }
+
+  // Create CSV content
+  let csv = 'Date,Watts\n';
+  powerChartData.forEach(d => {
+    const date = new Date(d.timestamp);
+    const dateStr = date.toString().replace(/\s*\(.*\)/, '').replace(/GMT.*$/, '').trim();
+    csv += `${dateStr},${d.power_watts}\n`;
+  });
+
+  // Create download
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `power_consumption_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function loadPowerChart(clientId, hours = 24) {
+  const chartContainer = document.getElementById('powerChartContainer');
+
+  if (!chartContainer) {
+    return;
+  }
+
+  try {
+    // Show loading state
+    chartContainer.innerHTML = `
+      <canvas id="powerChart" style="max-height: 300px;"></canvas>
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted);">
+        Loading power data...
+      </div>
+    `;
+
+    const data = await getPowerHistory(clientId, hours);
+
+    if (!data.data || data.data.length === 0) {
+      powerChartData = null;
+      chartContainer.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted);">
+          No power consumption data available yet
+        </div>
+      `;
+      return;
+    }
+
+    // Store data for download
+    powerChartData = data.data;
+
+    // Prepare chart data
+    const labels = data.data.map(d => {
+      const date = new Date(d.timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+    const powerValues = data.data.map(d => d.power_watts);
+
+    // Calculate stats
+    const avgPower = Math.round(powerValues.reduce((a, b) => a + b, 0) / powerValues.length);
+    const minPower = Math.min(...powerValues);
+    const maxPower = Math.max(...powerValues);
+
+    // Restore canvas
+    chartContainer.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <div style="font-size: 0.85rem; color: var(--text-muted);">
+          Avg: <strong>${avgPower}W</strong> | Min: <strong>${minPower}W</strong> | Max: <strong>${maxPower}W</strong>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <button class="btn btn-sm" onclick="downloadPowerData()" title="Download CSV">📥 Download</button>
+          <select id="powerChartHours" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.85rem;" onchange="loadPowerChart('${clientId}', parseInt(this.value))">
+            <option value="1" ${hours === 1 ? 'selected' : ''}>Last 1 hour</option>
+            <option value="6" ${hours === 6 ? 'selected' : ''}>Last 6 hours</option>
+            <option value="24" ${hours === 24 ? 'selected' : ''}>Last 24 hours</option>
+            <option value="168" ${hours === 168 ? 'selected' : ''}>Last 7 days</option>
+          </select>
+        </div>
+      </div>
+      <canvas id="powerChart" style="max-height: 250px;"></canvas>
+    `;
+
+    const ctx = document.getElementById('powerChart').getContext('2d');
+
+    // Destroy existing chart if any
+    if (powerChart) {
+      powerChart.destroy();
+    }
+
+    powerChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Power Consumption (W)',
+          data: powerValues,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointRadius: data.data.length > 100 ? 0 : 2,
+          pointHoverRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        },
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            padding: 10,
+            callbacks: {
+              label: function (context) {
+                return `Power: ${context.raw}W`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            display: true,
+            title: {
+              display: true,
+              text: 'Time',
+              color: 'rgba(255, 255, 255, 0.8)',
+              font: {
+                size: 12
+              }
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            },
+            ticks: {
+              color: 'rgba(255, 255, 255, 0.6)',
+              maxTicksLimit: 10
+            }
+          },
+          y: {
+            display: true,
+            title: {
+              display: true,
+              text: 'Power (Watts)',
+              color: 'rgba(255, 255, 255, 0.8)',
+              font: {
+                size: 12
+              }
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            },
+            ticks: {
+              color: 'rgba(255, 255, 255, 0.6)',
+              callback: function (value) {
+                return value + 'W';
+              }
+            }
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Failed to load power chart:', error);
+    chartContainer.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted);">
+        Failed to load power data
+      </div>
+    `;
+  }
 }
 
 async function handleRegenerateToken(clientId) {

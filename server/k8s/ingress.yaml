@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agent-server-ingress
+  namespace: agent-system
+  annotations:
+    # Nginx Ingress settings
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    
+    # Use specific IP address
+    metallb.universe.tf/loadBalancerIPs: "100.74.51.235"
+    
+    # WebSocket support
+    nginx.ingress.kubernetes.io/websocket-services: "agent-server-service"
+    
+    # Timeout settings (WebSocket long connections)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    
+    # Body size
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: agent.local
+    http:
+      paths:
+      # WebSocket Path
+      - path: /ws
+        pathType: Prefix
+        backend:
+          service:
+            name: agent-server-service
+            port:
+              number: 80
+      # API Path
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: agent-server-service
+            port:
+              number: 80
+      # Web UI
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: agent-server-service
+            port:
+              number: 80

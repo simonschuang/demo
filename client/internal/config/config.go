@@ -28,8 +28,9 @@ type Config struct {
 	ClientToken string `mapstructure:"client_token"`
 
 	// WebSocket settings
-	WSScheme string `mapstructure:"ws_scheme"`
-	WSPath   string `mapstructure:"ws_path"`
+	WSScheme           string `mapstructure:"ws_scheme"`
+	WSPath             string `mapstructure:"ws_path"`
+	InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify"`
 
 	// Heartbeat settings
 	HeartbeatInterval int `mapstructure:"heartbeat_interval"`

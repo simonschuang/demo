@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kaniko-workspace
+  namespace: agent-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kaniko-build
+  namespace: agent-system
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - "--context=dir:///workspace"
+        - "--destination=localhost:5000/agent-server:latest"
+        - "--insecure"
+        - "--skip-tls-verify"
+        - "--tarPath=/workspace/agent-server.tar"
+        - "--no-push"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      restartPolicy: Never
+      volumes:
+      - name: workspace
+        persistentVolumeClaim:
+          claimName: kaniko-workspace
+  backoffLimit: 1

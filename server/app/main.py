@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import __version__
 from app.config import settings
 from app.database import init_db, async_session_maker
 from app.redis_client import redis_client
@@ -38,7 +39,7 @@ WEB_DIR = BASE_DIR / "web"
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-    logger.info("Starting Agent Monitor Server...")
+    logger.info(f"Starting Agent Monitor Server v{__version__}...")
     
     # Initialize database
     await init_db()
