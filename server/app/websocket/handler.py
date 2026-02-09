@@ -70,6 +70,9 @@ async def handle_inventory(client_id: str, data: dict, db: AsyncSession):
         logger.error(f"Client not found: {client_id}")
         return
     
+    # Handle hybrid mode (local + bmc) or single mode data
+    inventory_data = extract_inventory_data(data)
+    
     # Check if inventory exists
     result = await db.execute(
         select(InventoryLatest).where(InventoryLatest.client_id == client_id)
@@ -80,7 +83,7 @@ async def handle_inventory(client_id: str, data: dict, db: AsyncSession):
     
     if inventory:
         # Check if data changed
-        changed = has_inventory_changed(inventory, data)
+        changed = has_inventory_changed(inventory, inventory_data)
         
         if changed:
             # Save to history
@@ -92,19 +95,19 @@ async def handle_inventory(client_id: str, data: dict, db: AsyncSession):
             db.add(history)
         
         # Update latest
-        update_inventory_from_data(inventory, data)
+        update_inventory_from_data(inventory, inventory_data, data)
     else:
         # Create new inventory
         inventory = InventoryLatest(client_id=client_id)
-        update_inventory_from_data(inventory, data)
+        update_inventory_from_data(inventory, inventory_data, data)
         db.add(inventory)
         changed = True
     
     # Update client info
-    client.hostname = data.get("hostname", client.hostname)
-    client.os = data.get("os", client.os)
-    client.platform = data.get("platform", client.platform)
-    client.arch = data.get("arch", client.arch)
+    client.hostname = inventory_data.get("hostname", client.hostname)
+    client.os = inventory_data.get("os", client.os)
+    client.platform = inventory_data.get("platform", client.platform)
+    client.arch = inventory_data.get("arch", client.arch)
     
     await db.commit()
     
@@ -112,6 +115,49 @@ async def handle_inventory(client_id: str, data: dict, db: AsyncSession):
     await connection_manager.send_inventory_ack(client_id, changed)
     
     logger.info(f"Inventory updated for {client_id}, changed={changed}")
+
+
+def extract_inventory_data(data: dict) -> dict:
+    """Extract inventory data from hybrid or single mode format"""
+    # Check if this is hybrid mode (has 'local' or 'bmc' keys)
+    if "local" in data or "bmc" in data:
+        # Hybrid mode: prefer local data for basic fields, merge with BMC data
+        local_data = data.get("local", {})
+        bmc_data = data.get("bmc", {})
+        
+        # Start with local data as base
+        result = dict(local_data)
+        
+        # Add BMC-specific fields
+        if bmc_data:
+            result["bmc_type"] = bmc_data.get("bmc_type")
+            result["bmc_version"] = bmc_data.get("bmc_version")
+            result["bmc_ip"] = bmc_data.get("bmc_ip")
+            result["bmc_manufacturer"] = bmc_data.get("manufacturer")
+            result["bmc_model"] = bmc_data.get("model")
+            result["bmc_serial_number"] = bmc_data.get("serial_number")
+            result["bmc_bios_version"] = bmc_data.get("bios_version")
+            result["bmc_power_state"] = bmc_data.get("power_state")
+            result["bmc_health_status"] = bmc_data.get("health_status")
+            result["bmc_processors"] = bmc_data.get("processors")
+            result["bmc_memory_total"] = bmc_data.get("memory_total")
+            result["bmc_memory_modules"] = bmc_data.get("memory_modules")
+            result["bmc_storage"] = bmc_data.get("storage")
+            result["bmc_network_ports"] = bmc_data.get("network_ports")
+            result["bmc_power_supplies"] = bmc_data.get("power_supplies")
+            result["bmc_fans"] = bmc_data.get("fans")
+            result["bmc_temperatures"] = bmc_data.get("temperatures")
+            
+            # Store full BMC data in raw_data
+            if result.get("raw_data"):
+                result["raw_data"]["bmc"] = bmc_data
+            else:
+                result["raw_data"] = {"bmc": bmc_data, "local": local_data.get("raw_data", {})}
+        
+        return result
+    else:
+        # Single mode: data is already flat
+        return data
 
 
 def has_inventory_changed(inventory: InventoryLatest, data: dict) -> bool:
@@ -133,7 +179,7 @@ def has_inventory_changed(inventory: InventoryLatest, data: dict) -> bool:
     return False
 
 
-def update_inventory_from_data(inventory: InventoryLatest, data: dict):
+def update_inventory_from_data(inventory: InventoryLatest, data: dict, original_data: dict = None):
     """Update inventory object from data dict"""
     inventory.hostname = data.get("hostname")
     inventory.os = data.get("os")
@@ -151,6 +197,10 @@ def update_inventory_from_data(inventory: InventoryLatest, data: dict):
     inventory.mac_addresses = data.get("mac_addresses")
     inventory.raw_data = data.get("raw_data")
     inventory.collected_at = datetime.utcnow()
+    
+    # Store original data if it was hybrid mode (for full BMC details)
+    if original_data and ("local" in original_data or "bmc" in original_data):
+        inventory.raw_data = original_data
 
 
 def inventory_to_dict(inventory: InventoryLatest) -> dict:

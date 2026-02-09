@@ -9,6 +9,17 @@ import (
 	"github.com/spf13/viper"
 )
 
+// BMCConfig holds BMC-related configuration
+type BMCConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	IP                 string `mapstructure:"ip"`
+	Username           string `mapstructure:"username"`
+	Password           string `mapstructure:"password"`
+	Protocol           string `mapstructure:"protocol"` // "redfish" or "ipmi"
+	Port               int    `mapstructure:"port"`
+	InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify"`
+}
+
 // Config holds all configuration for the agent
 type Config struct {
 	// Server connection info
@@ -27,6 +38,9 @@ type Config struct {
 	// Inventory settings
 	CollectInterval int `mapstructure:"collect_interval"`
 
+	// BMC settings
+	BMC BMCConfig `mapstructure:"bmc"`
+
 	// Logging settings
 	LogLevel string `mapstructure:"log_level"`
 	LogFile  string `mapstructure:"log_file"`
@@ -43,6 +57,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.SetDefault("reconnect_interval", 5)
 	v.SetDefault("collect_interval", 60)
 	v.SetDefault("log_level", "info")
+
+	// BMC defaults
+	v.SetDefault("bmc.enabled", false)
+	v.SetDefault("bmc.protocol", "redfish")
+	v.SetDefault("bmc.port", 443)
+	v.SetDefault("bmc.insecure_skip_verify", true)
 
 	// Check if config file exists
 	if configPath != "" {
@@ -86,7 +106,29 @@ func (c *Config) Validate() error {
 	if c.ClientToken == "" {
 		return fmt.Errorf("client_token is required")
 	}
+
+	// Validate BMC config if enabled
+	if c.BMC.Enabled {
+		if c.BMC.IP == "" {
+			return fmt.Errorf("bmc.ip is required when BMC is enabled")
+		}
+		if c.BMC.Username == "" {
+			return fmt.Errorf("bmc.username is required when BMC is enabled")
+		}
+		if c.BMC.Password == "" {
+			return fmt.Errorf("bmc.password is required when BMC is enabled")
+		}
+		if c.BMC.Protocol != "redfish" && c.BMC.Protocol != "ipmi" {
+			return fmt.Errorf("bmc.protocol must be 'redfish' or 'ipmi'")
+		}
+	}
+
 	return nil
+}
+
+// IsBMCMode returns true if BMC mode is enabled
+func (c *Config) IsBMCMode() bool {
+	return c.BMC.Enabled
 }
 
 // GetWSURL returns the full WebSocket URL

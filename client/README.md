@@ -50,4 +50,53 @@ log_level: "info"
   - Memory information (total, used, free)
   - Disk information (total, used, free)
   - Network information (IP addresses, MAC addresses)
+- BMC (Baseboard Management Controller) support:
+  - Collect hardware inventory from BMC via Redfish API or IPMI
+  - Supports hybrid mode (local + BMC) or BMC-only mode
 - Graceful shutdown on SIGINT/SIGTERM
+
+## BMC Mode
+
+When managing physical servers with BMC (iDRAC, iLO, etc.), you can configure the agent to collect hardware information from the BMC instead of or in addition to the local host.
+
+### Configuration
+
+Add BMC configuration to your `config.yaml`:
+
+```yaml
+bmc:
+  enabled: true                 # Enable BMC collection
+  ip: "192.168.1.100"          # BMC IP address
+  username: "admin"            # BMC username
+  password: "password"         # BMC password
+  protocol: "redfish"          # "redfish" (recommended) or "ipmi"
+  port: 443                    # BMC port (443 for Redfish, 623 for IPMI)
+  insecure_skip_verify: true   # Skip TLS certificate verification
+```
+
+### Collection Modes
+
+1. **Local-only** (default): Collects system information from the host running the agent
+2. **Hybrid mode**: When BMC is enabled, collects from both local host and BMC
+3. **BMC-only mode**: Use `-bmc-only` flag to collect only from BMC
+
+```bash
+# Hybrid mode (local + BMC)
+./agent -config ./config.yaml
+
+# BMC-only mode
+./agent -config ./config.yaml -bmc-only
+```
+
+### BMC Data Collected
+
+When BMC mode is enabled, the following information is collected:
+
+- System: Manufacturer, model, serial number, BIOS version
+- Processors: Model, cores, threads, speed
+- Memory: Total capacity, module details
+- Storage: Drives, capacity, media type
+- Network: Port information, MAC/IP addresses
+- Power: State, power supply information
+- Thermal: Fan status, temperature readings
+- Health: Overall system health status
