@@ -2,6 +2,19 @@
 
 Python FastAPI 後端服務，用於 Agent 監控平台。
 
+## 版本
+
+當前版本: **v1.0.0**
+
+檢查版本:
+```bash
+# API endpoint
+curl http://localhost:8080/api/v1/version
+
+# 或透過 Makefile
+make version
+```
+
 ## 需求
 
 - Python 3.9+
@@ -23,6 +36,8 @@ venv\Scripts\activate  # Windows
 
 ```bash
 pip install -r requirements.txt
+# 或使用 Makefile
+make install
 ```
 
 ### 3. 設定環境變數
@@ -54,9 +69,36 @@ cp .env.example .env
 ```bash
 # 開發模式 (自動重載)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+# 或使用 Makefile
+make dev
 
 # 生產模式
 uvicorn app.main:app --host 0.0.0.0 --port 8080 --workers 4
+# 或使用 Makefile
+make run
+```
+
+## 生產環境部署
+
+### 設定版本號
+
+```bash
+# 使用 Makefile 設定版本
+make set-version VERSION=1.0.0
+
+# 或手動編輯 app/__init__.py
+__version__ = "1.0.0"
+__build_time__ = "2026-02-09 00:00:00 UTC"
+```
+
+### Docker 部署
+
+```bash
+# 建立 Docker image
+make build-docker VERSION=1.0.0
+
+# 或手動
+docker build -t agent-monitor-server:1.0.0 .
 ```
 
 ### 5. 存取服務

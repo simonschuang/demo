@@ -73,3 +73,28 @@ class InventoryHistory(Base):
     
     def __repr__(self):
         return f"<InventoryHistory(client_id={self.client_id}, collected_at={self.collected_at})>"
+
+
+class PowerHistory(Base):
+    """Stores power consumption history for charting"""
+    __tablename__ = "power_history"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String(36), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Power data
+    power_consumed_watts = Column(Integer, nullable=False)
+    
+    # Optional additional metrics
+    avg_power_watts = Column(Integer, nullable=True)
+    min_power_watts = Column(Integer, nullable=True)
+    max_power_watts = Column(Integer, nullable=True)
+    
+    # Timestamp
+    recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    # Relationship
+    client = relationship("Client", back_populates="power_history")
+    
+    def __repr__(self):
+        return f"<PowerHistory(client_id={self.client_id}, power={self.power_consumed_watts}W, at={self.recorded_at})>"

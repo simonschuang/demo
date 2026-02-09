@@ -15,16 +15,18 @@ type Heartbeat struct {
 	stopChan  chan struct{}
 	logger    *logrus.Logger
 	startTime time.Time
+	version   string
 }
 
 // NewHeartbeat creates a new heartbeat manager
-func NewHeartbeat(wsClient *websocket.Client, intervalSeconds int, logger *logrus.Logger) *Heartbeat {
+func NewHeartbeat(wsClient *websocket.Client, intervalSeconds int, version string, logger *logrus.Logger) *Heartbeat {
 	return &Heartbeat{
 		wsClient:  wsClient,
 		interval:  time.Duration(intervalSeconds) * time.Second,
 		stopChan:  make(chan struct{}),
 		logger:    logger,
 		startTime: time.Now(),
+		version:   version,
 	}
 }
 
@@ -69,8 +71,9 @@ func (h *Heartbeat) sendHeartbeat() {
 	uptime := int64(time.Since(h.startTime).Seconds())
 
 	data := map[string]interface{}{
-		"status": "alive",
-		"uptime": uptime,
+		"status":        "alive",
+		"uptime":        uptime,
+		"agent_version": h.version,
 	}
 
 	if err := h.wsClient.SendMessage("heartbeat", data); err != nil {

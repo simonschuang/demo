@@ -41,6 +41,7 @@ class Client(Base):
     user = relationship("User", back_populates="clients")
     inventory_latest = relationship("InventoryLatest", back_populates="client", uselist=False, cascade="all, delete-orphan")
     inventory_history = relationship("InventoryHistory", back_populates="client", cascade="all, delete-orphan")
+    power_history = relationship("PowerHistory", back_populates="client", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Client(id={self.id}, hostname={self.hostname}, status={self.status})>"

@@ -2,20 +2,52 @@
 
 Golang Agent Client for Agent Monitor Platform.
 
+## Version
+
+Current version: **v1.0.0**
+
+Check version:
+```bash
+./agent -version
+```
+
 ## Requirements
 
 - Go 1.21+
 
 ## Build
 
+### Development Build
+
 ```bash
 # Build for current platform
 go build -o agent ./cmd/agent
+```
 
-# Cross-compile for different platforms
-GOOS=linux GOARCH=amd64 go build -o agent-linux-amd64 ./cmd/agent
-GOOS=darwin GOARCH=arm64 go build -o agent-darwin-arm64 ./cmd/agent
-GOOS=windows GOARCH=amd64 go build -o agent-windows-amd64.exe ./cmd/agent
+### Production Build (with version info)
+
+```bash
+# Using Makefile (recommended)
+make build-release VERSION=1.0.0
+
+# Or manually with ldflags
+VERSION=1.0.0
+BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+go build -ldflags "-X 'main.version=v${VERSION}' -X 'main.buildTime=${BUILD_TIME}'" -o agent ./cmd/agent
+```
+
+### Cross-compile for Different Platforms
+
+```bash
+# Using Makefile
+make build-linux VERSION=1.0.0
+make build-windows VERSION=1.0.0
+make build-all VERSION=1.0.0
+
+# Or manually
+GOOS=linux GOARCH=amd64 go build -ldflags "-X 'main.version=v1.0.0'" -o agent-linux-amd64 ./cmd/agent
+GOOS=darwin GOARCH=arm64 go build -ldflags "-X 'main.version=v1.0.0'" -o agent-darwin-arm64 ./cmd/agent
+GOOS=windows GOARCH=amd64 go build -ldflags "-X 'main.version=v1.0.0'" -o agent-windows-amd64.exe ./cmd/agent
 ```
 
 ## Configuration

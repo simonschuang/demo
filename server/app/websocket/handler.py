@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.client import Client
-from app.models.inventory import InventoryLatest, InventoryHistory
+from app.models.inventory import InventoryLatest, InventoryHistory, PowerHistory
 from app.redis_client import redis_client
 from app.websocket.manager import connection_manager
 from app.terminal.proxy import terminal_proxy
@@ -54,6 +54,9 @@ async def handle_heartbeat(client_id: str, data: dict, db: AsyncSession):
     if client:
         client.last_seen = datetime.utcnow()
         client.status = "online"
+        # Update agent_version if provided
+        if data.get("agent_version"):
+            client.agent_version = data["agent_version"]
         await db.commit()
     
     # Send heartbeat ack
@@ -108,6 +111,9 @@ async def handle_inventory(client_id: str, data: dict, db: AsyncSession):
     client.os = inventory_data.get("os", client.os)
     client.platform = inventory_data.get("platform", client.platform)
     client.arch = inventory_data.get("arch", client.arch)
+    
+    # Save power consumption history if BMC data available
+    await save_power_history(client_id, data, db)
     
     await db.commit()
     
@@ -223,3 +229,28 @@ def inventory_to_dict(inventory: InventoryLatest) -> dict:
         "raw_data": inventory.raw_data,
         "collected_at": inventory.collected_at.isoformat() if inventory.collected_at else None
     }
+
+
+async def save_power_history(client_id: str, data: dict, db: AsyncSession):
+    """Save power consumption data to history"""
+    bmc_data = data.get("bmc", {})
+    if not bmc_data:
+        return
+    
+    power_consumed = bmc_data.get("power_consumed_watts")
+    if power_consumed is None:
+        return
+    
+    # Also try to get min/max/avg from cached average in raw data
+    power_metrics = bmc_data.get("power_metrics", {})
+    
+    power_record = PowerHistory(
+        client_id=client_id,
+        power_consumed_watts=int(power_consumed),
+        avg_power_watts=power_metrics.get("average_watts"),
+        min_power_watts=power_metrics.get("min_watts"),
+        max_power_watts=power_metrics.get("max_watts")
+    )
+    db.add(power_record)
+    
+    logger.debug(f"Saved power history for {client_id}: {power_consumed}W")

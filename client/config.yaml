@@ -1,11 +1,12 @@
 # Agent Configuration
-server_url: "localhost:8080"
-client_id: "c86a2735-a396-4702-96df-f3647fd73416"
-client_token: "XfczFh3udC9FHbGh79asJlqG0UiACBadQh3dKKX76fQ"
+server_url: "mon.myelintek.com"
+client_id: "3b37b70b-d92f-4e5f-8578-5815b2d3cdda"
+client_token: "uk4oyr1qMwlGfqiqgg9MTt1ZZHxyqzmZhtwlIMD-wPk"
 
 # WebSocket settings
-ws_scheme: "ws"  # Use "wss" for production
+ws_scheme: "wss"  # Use "wss" for tls, "ws" for non-tls
 ws_path: "/ws"
+insecure_skip_verify: true  # Skip TLS certificate verification for wss://
 
 # Heartbeat settings (seconds)
 heartbeat_interval: 15
