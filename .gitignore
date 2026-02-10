@@ -1,5 +1,5 @@
 venv
 *.pyc
-agent
+client/agent
 *.db
 releases

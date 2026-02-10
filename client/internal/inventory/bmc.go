@@ -59,17 +59,6 @@ type NetworkPortInfo struct {
 	IPAddresses []string `json:"ip_addresses,omitempty"`
 }
 
-// PowerInfo represents power supply information from BMC
-type PowerInfo struct {
-	ID              string `json:"id"`
-	Manufacturer    string `json:"manufacturer"`
-	Model           string `json:"model"`
-	SerialNumber    string `json:"serial_number"`
-	PowerCapacity   int    `json:"power_capacity_watts"`
-	PowerOutputWatts int   `json:"power_output_watts,omitempty"`
-	Status          string `json:"status"`
-}
-
 // FanInfo represents fan information from BMC
 type FanInfo struct {
 	ID         string `json:"id"`
@@ -117,10 +106,9 @@ type BMCInventory struct {
 	// Network ports
 	NetworkPorts []NetworkPortInfo `json:"network_ports"`
 
-	// Power state and supplies
-	PowerState         string      `json:"power_state"`
-	PowerConsumedWatts int         `json:"power_consumed_watts"`
-	PowerSupplies      []PowerInfo `json:"power_supplies"`
+	// Power state
+	PowerState         string `json:"power_state"`
+	PowerConsumedWatts int    `json:"power_consumed_watts"`
 
 	// Cooling info
 	Fans         []FanInfo  `json:"fans"`
@@ -618,7 +606,7 @@ func (c *BMCCollector) collectChassisInfo(baseURL string, inv *BMCInventory) err
 	return nil
 }
 
-// collectPowerInfo collects power supply information
+// collectPowerInfo collects power consumption information
 func (c *BMCCollector) collectPowerInfo(chassisURL string, inv *BMCInventory) {
 	power, err := c.redfishGet(chassisURL + "/Power")
 	if err != nil {
@@ -631,99 +619,6 @@ func (c *BMCCollector) collectPowerInfo(chassisURL string, inv *BMCInventory) {
 			if consumed, ok := pc["PowerConsumedWatts"].(float64); ok {
 				inv.PowerConsumedWatts = int(consumed)
 			}
-		}
-	}
-
-	// Debug: log raw power supplies data to see what fields BMC returns
-	if supplies, ok := power["PowerSupplies"].([]interface{}); ok {
-		c.logger.Debugf("Found %d power supplies in Redfish response", len(supplies))
-		for i, supply := range supplies {
-			if supplyMap, ok := supply.(map[string]interface{}); ok {
-				// Log all available fields for debugging
-				c.logger.Debugf("PSU[%d] raw fields: %+v", i, supplyMap)
-			}
-		}
-	}
-
-	if supplies, ok := power["PowerSupplies"].([]interface{}); ok {
-		for _, supply := range supplies {
-			supplyMap := supply.(map[string]interface{})
-			psuInfo := PowerInfo{
-				ID: getStringValue(supplyMap, "MemberId"),
-			}
-
-			// Try multiple field names for Manufacturer (different BMC vendors use different names)
-			if mfr, ok := supplyMap["Manufacturer"].(string); ok && mfr != "" {
-				psuInfo.Manufacturer = mfr
-			} else if mfr, ok := supplyMap["PowerSupplyType"].(string); ok && mfr != "" {
-				// Some BMCs put manufacturer info in PowerSupplyType
-				psuInfo.Manufacturer = mfr
-			} else if name, ok := supplyMap["Name"].(string); ok && name != "" {
-				// Fallback: extract from Name field
-				psuInfo.Manufacturer = name
-			}
-
-			// Try multiple field names for Model
-			if model, ok := supplyMap["Model"].(string); ok && model != "" {
-				psuInfo.Model = model
-			} else if pn, ok := supplyMap["PartNumber"].(string); ok && pn != "" {
-				psuInfo.Model = pn
-			} else if spn, ok := supplyMap["SparePartNumber"].(string); ok && spn != "" {
-				psuInfo.Model = spn
-			}
-
-			if sn, ok := supplyMap["SerialNumber"].(string); ok {
-				psuInfo.SerialNumber = sn
-			}
-			if cap, ok := supplyMap["PowerCapacityWatts"].(float64); ok {
-				psuInfo.PowerCapacity = int(cap)
-			}
-
-			// Get individual PSU output power - try multiple field names
-			if output, ok := supplyMap["PowerOutputWatts"].(float64); ok {
-				psuInfo.PowerOutputWatts = int(output)
-			} else if output, ok := supplyMap["LastPowerOutputWatts"].(float64); ok {
-				psuInfo.PowerOutputWatts = int(output)
-			} else if output, ok := supplyMap["PowerInputWatts"].(float64); ok {
-				// Some BMCs report input instead of output
-				psuInfo.PowerOutputWatts = int(output)
-			} else if lineInput, ok := supplyMap["LineInputVoltage"].(float64); ok {
-				// Try to get from line input info (some Gigabyte BMCs)
-				if lineInputType, ok := supplyMap["LineInputVoltageType"].(string); ok && lineInputType != "" {
-					c.logger.Debugf("PSU %s: LineInputVoltage=%.1fV, Type=%s", psuInfo.ID, lineInput, lineInputType)
-				}
-			}
-
-			// Check Oem section for vendor-specific data (common for Gigabyte/AMI BMCs)
-			if oem, ok := supplyMap["Oem"].(map[string]interface{}); ok {
-				for vendor, data := range oem {
-					if vendorData, ok := data.(map[string]interface{}); ok {
-						c.logger.Debugf("PSU %s Oem/%s data: %+v", psuInfo.ID, vendor, vendorData)
-						// Try to extract any useful info from OEM section
-						if mfr, ok := vendorData["Manufacturer"].(string); ok && psuInfo.Manufacturer == "" {
-							psuInfo.Manufacturer = mfr
-						}
-						if model, ok := vendorData["Model"].(string); ok && psuInfo.Model == "" {
-							psuInfo.Model = model
-						}
-						if output, ok := vendorData["PowerOutputWatts"].(float64); ok && psuInfo.PowerOutputWatts == 0 {
-							psuInfo.PowerOutputWatts = int(output)
-						}
-					}
-				}
-			}
-
-			if status, ok := supplyMap["Status"].(map[string]interface{}); ok {
-				if health, ok := status["Health"].(string); ok {
-					psuInfo.Status = health
-				}
-			}
-
-			// Log what we found for debugging
-			c.logger.Debugf("PSU collected: ID=%s, Manufacturer=%s, Model=%s, Capacity=%dW, Output=%dW",
-				psuInfo.ID, psuInfo.Manufacturer, psuInfo.Model, psuInfo.PowerCapacity, psuInfo.PowerOutputWatts)
-
-			inv.PowerSupplies = append(inv.PowerSupplies, psuInfo)
 		}
 	}
 
@@ -907,7 +802,6 @@ func (inv *BMCInventory) ToMap() map[string]interface{} {
 		"network_ports":        inv.NetworkPorts,
 		"power_state":          inv.PowerState,
 		"power_consumed_watts": inv.PowerConsumedWatts,
-		"power_supplies":       inv.PowerSupplies,
 		"fans":                 inv.Fans,
 		"temperatures":         inv.Temperatures,
 		"health_status":        inv.HealthStatus,

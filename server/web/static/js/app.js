@@ -833,6 +833,19 @@ function updatePollStatus(text) {
 async function refreshInventoryData(clientId) {
   try {
     updatePollStatus('Refreshing...');
+
+    // Read current hours selection BEFORE replacing DOM content
+    const hoursSelect = document.getElementById('powerChartHours');
+    const hours = hoursSelect ? parseInt(hoursSelect.value) : 24;
+
+    // Detach the power chart section to preserve it during refresh (keep original, don't clone)
+    const existingPowerSection = document.getElementById('powerChartSection');
+    let savedPowerSection = null;
+    if (existingPowerSection && powerChart) {
+      savedPowerSection = existingPowerSection;
+      existingPowerSection.remove(); // Remove from DOM but keep reference
+    }
+
     const inventory = await getInventory(clientId);
 
     // Update the inventory sections in place
@@ -846,8 +859,16 @@ async function refreshInventoryData(clientId) {
       }
       detailGrid.innerHTML += renderInventorySection(inventory);
 
-      // Reload power chart after refreshing inventory
-      loadPowerChart(clientId);
+      // Restore the saved power chart section to prevent flicker
+      if (savedPowerSection) {
+        const newPowerSection = document.getElementById('powerChartSection');
+        if (newPowerSection) {
+          newPowerSection.replaceWith(savedPowerSection);
+        }
+      }
+
+      // Update power chart data (will do in-place update if chart exists)
+      loadPowerChart(clientId, hours);
     }
 
     updatePollStatus(`Last updated: ${new Date().toLocaleTimeString()}`);
@@ -1143,7 +1164,7 @@ function renderInventorySection(inventory) {
             </div>
         </div>
         
-        <div class="detail-section" style="grid-column: 1 / -1;">
+        <div id="powerChartSection" class="detail-section" style="grid-column: 1 / -1;">
             <h3>⚡ Power Consumption</h3>
             <div id="powerChartContainer" style="position: relative; min-height: 200px;">
                 <div style="display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted);">
@@ -1159,6 +1180,8 @@ function renderInventorySection(inventory) {
 // Power consumption chart instance
 let powerChart = null;
 let powerChartData = null; // Store data for download
+let powerChartCurrentHours = null; // Track current hours setting
+let powerChartClientId = null; // Track current client
 
 function downloadPowerData() {
   if (!powerChartData || powerChartData.length === 0) {
@@ -1194,14 +1217,24 @@ async function loadPowerChart(clientId, hours = 24) {
     return;
   }
 
+  // Check if we can do an in-place update (same client, same hours, chart exists, same canvas)
+  const existingCanvas = document.getElementById('powerChart');
+  const canUpdateInPlace = powerChart && 
+                           powerChartCurrentHours === hours && 
+                           powerChartClientId === clientId &&
+                           existingCanvas &&
+                           powerChart.canvas === existingCanvas;
+
   try {
-    // Show loading state
-    chartContainer.innerHTML = `
-      <canvas id="powerChart" style="max-height: 300px;"></canvas>
-      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted);">
-        Loading power data...
-      </div>
-    `;
+    // Only show loading state on first load
+    if (!canUpdateInPlace) {
+      chartContainer.innerHTML = `
+        <canvas id="powerChart" style="max-height: 300px;"></canvas>
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted);">
+          Loading power data...
+        </div>
+      `;
+    }
 
     const data = await getPowerHistory(clientId, hours);
 
@@ -1211,6 +1244,12 @@ async function loadPowerChart(clientId, hours = 24) {
 
     if (!data.data || data.data.length === 0) {
       powerChartData = null;
+      powerChartCurrentHours = null;
+      powerChartClientId = null;
+      if (powerChart) {
+        powerChart.destroy();
+        powerChart = null;
+      }
       chartContainer.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted);">
           No power consumption data available yet
@@ -1225,9 +1264,9 @@ async function loadPowerChart(clientId, hours = 24) {
     // Generate time slots for the full range
     let slotMinutes;
     if (hours <= 1) {
-      slotMinutes = 5;  // 5-minute slots for 1 hour
+      slotMinutes = 2;  // 2-minute slots for 1 hour
     } else if (hours <= 6) {
-      slotMinutes = 15; // 15-minute slots for 6 hours
+      slotMinutes = 5; // 5-minute slots for 6 hours
     } else if (hours <= 24) {
       slotMinutes = 30; // 30-minute slots for 24 hours
     } else {
@@ -1283,18 +1322,46 @@ async function loadPowerChart(clientId, hours = 24) {
     const yMin = Math.max(0, minPower - 50);
     const yMax = maxPower + 50;
 
-    // Restore canvas with improved layout
+    // If we can update in place, just update the data without rebuilding DOM
+    if (canUpdateInPlace) {
+      // Update stats display
+      const currentEl = document.getElementById('powerStatCurrent');
+      const avgEl = document.getElementById('powerStatAvg');
+      const minEl = document.getElementById('powerStatMin');
+      const maxEl = document.getElementById('powerStatMax');
+      
+      if (currentEl) currentEl.textContent = `${currentPower}W`;
+      if (avgEl) avgEl.textContent = `${avgPower}W`;
+      if (minEl) minEl.textContent = `${minPower}W`;
+      if (maxEl) maxEl.textContent = `${maxPower}W`;
+
+      // Update chart data
+      powerChart.data.labels = labels;
+      powerChart.data.datasets[0].data = values;
+      powerChart.data.datasets[0].pointRadius = values.length > 50 ? 0 : 3;
+      
+      // Update Y axis bounds
+      powerChart.options.scales.y.min = yMin;
+      powerChart.options.scales.y.max = yMax;
+      powerChart.options.scales.y.ticks.stepSize = Math.ceil((yMax - yMin) / 5);
+      
+      // Update chart without animation for smoother refresh
+      powerChart.update('none');
+      return;
+    }
+
+    // Full rebuild - create canvas with improved layout
     chartContainer.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <div style="display: flex; align-items: center; gap: 1.5rem;">
           <div style="text-align: center;">
-            <div style="font-size: 1.5rem; font-weight: bold; color: #3b82f6;">${currentPower}W</div>
+            <div id="powerStatCurrent" style="font-size: 1.5rem; font-weight: bold; color: #3b82f6;">${currentPower}W</div>
             <div style="font-size: 0.75rem; color: var(--text-muted);">Current</div>
           </div>
           <div style="display: flex; gap: 1rem; font-size: 0.85rem; color: var(--text-muted);">
-            <span>Avg: <strong style="color: var(--text-color);">${avgPower}W</strong></span>
-            <span>Min: <strong style="color: #22c55e;">${minPower}W</strong></span>
-            <span>Max: <strong style="color: #ef4444;">${maxPower}W</strong></span>
+            <span>Avg: <strong id="powerStatAvg" style="color: var(--text-color);">${avgPower}W</strong></span>
+            <span>Min: <strong id="powerStatMin" style="color: #22c55e;">${minPower}W</strong></span>
+            <span>Max: <strong id="powerStatMax" style="color: #ef4444;">${maxPower}W</strong></span>
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -1318,6 +1385,10 @@ async function loadPowerChart(clientId, hours = 24) {
     if (powerChart) {
       powerChart.destroy();
     }
+
+    // Store current settings
+    powerChartCurrentHours = hours;
+    powerChartClientId = clientId;
 
     powerChart = new Chart(ctx, {
       type: 'line',
@@ -1459,6 +1530,8 @@ async function loadPowerChart(clientId, hours = 24) {
     });
   } catch (error) {
     console.error('Failed to load power chart:', error);
+    powerChartCurrentHours = null;
+    powerChartClientId = null;
     chartContainer.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted);">
         Failed to load power data
