@@ -2,15 +2,17 @@
 Agent Monitor Server - Main Application
 """
 import asyncio
+import hashlib
 import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import __version__
@@ -33,6 +35,26 @@ logger = logging.getLogger(__name__)
 # Get the base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
+
+# Setup Jinja2 templates
+templates = Jinja2Templates(directory=WEB_DIR / "templates")
+
+def get_static_version():
+    """Generate version string based on static files' modification time"""
+    static_dir = WEB_DIR / "static"
+    if not static_dir.exists():
+        return "1"
+    
+    # Get max mtime of all static files
+    max_mtime = 0
+    for f in static_dir.rglob("*"):
+        if f.is_file():
+            mtime = f.stat().st_mtime
+            if mtime > max_mtime:
+                max_mtime = mtime
+    
+    # Return timestamp as version
+    return str(int(max_mtime))
 
 
 @asynccontextmanager
@@ -110,11 +132,17 @@ if WEB_DIR.exists():
 
 
 @app.get("/")
-async def root():
+async def root(request: Request):
     """Serve the main web application"""
     index_path = WEB_DIR / "templates" / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "static_version": get_static_version()
+            }
+        )
     return {
         "name": "Agent Monitor Server",
         "version": "1.0.0",

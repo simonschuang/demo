@@ -1169,8 +1169,9 @@ function downloadPowerData() {
   // Create CSV content
   let csv = 'Date,Watts\n';
   powerChartData.forEach(d => {
-    const date = new Date(d.timestamp);
-    const dateStr = date.toString().replace(/\s*\(.*\)/, '').replace(/GMT.*$/, '').trim();
+    // Add 'Z' to indicate UTC time
+    const date = new Date(d.timestamp + 'Z');
+    const dateStr = date.toLocaleString();
     csv += `${dateStr},${d.power_watts}\n`;
   });
 
@@ -1204,6 +1205,10 @@ async function loadPowerChart(clientId, hours = 24) {
 
     const data = await getPowerHistory(clientId, hours);
 
+    // Calculate time range in local time
+    const now = new Date();
+    const startTime = new Date(now.getTime() - hours * 60 * 60 * 1000);
+
     if (!data.data || data.data.length === 0) {
       powerChartData = null;
       chartContainer.innerHTML = `
@@ -1217,35 +1222,94 @@ async function loadPowerChart(clientId, hours = 24) {
     // Store data for download
     powerChartData = data.data;
 
-    // Prepare chart data
-    const labels = data.data.map(d => {
-      const date = new Date(d.timestamp);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Generate time slots for the full range
+    let slotMinutes;
+    if (hours <= 1) {
+      slotMinutes = 5;  // 5-minute slots for 1 hour
+    } else if (hours <= 6) {
+      slotMinutes = 15; // 15-minute slots for 6 hours
+    } else if (hours <= 24) {
+      slotMinutes = 30; // 30-minute slots for 24 hours
+    } else {
+      slotMinutes = 120; // 2-hour slots for 7 days
+    }
+
+    // Create time slots from start to now
+    const timeSlots = [];
+    const slotMs = slotMinutes * 60 * 1000;
+    let slotTime = new Date(Math.floor(startTime.getTime() / slotMs) * slotMs);
+    while (slotTime <= now) {
+      timeSlots.push(new Date(slotTime));
+      slotTime = new Date(slotTime.getTime() + slotMs);
+    }
+
+    // Build a map of timestamp to power value
+    // Note: API returns UTC time without Z suffix, so we add it explicitly
+    const powerMap = new Map();
+    data.data.forEach(d => {
+      // Add 'Z' to indicate UTC time, so browser converts to local time correctly
+      const ts = new Date(d.timestamp + 'Z');
+      // Round to nearest slot
+      const slotKey = Math.floor(ts.getTime() / slotMs) * slotMs;
+      // Keep the latest value for each slot
+      if (!powerMap.has(slotKey) || ts.getTime() > powerMap.get(slotKey).time) {
+        powerMap.set(slotKey, { time: ts.getTime(), value: d.power_watts });
+      }
     });
-    const powerValues = data.data.map(d => d.power_watts);
 
-    // Calculate stats
-    const avgPower = Math.round(powerValues.reduce((a, b) => a + b, 0) / powerValues.length);
-    const minPower = Math.min(...powerValues);
-    const maxPower = Math.max(...powerValues);
+    // Create labels and values array
+    const labels = timeSlots.map(t => {
+      if (hours <= 24) {
+        return t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        return t.toLocaleDateString([], { month: '2-digit', day: '2-digit' }) + ' ' +
+          t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    });
 
-    // Restore canvas
+    const values = timeSlots.map(t => {
+      const entry = powerMap.get(t.getTime());
+      return entry ? entry.value : null;
+    });
+
+    // Calculate stats from actual data (non-null values)
+    const actualValues = values.filter(v => v !== null);
+    const avgPower = actualValues.length > 0 ? Math.round(actualValues.reduce((a, b) => a + b, 0) / actualValues.length) : 0;
+    const minPower = actualValues.length > 0 ? Math.min(...actualValues) : 0;
+    const maxPower = actualValues.length > 0 ? Math.max(...actualValues) : 0;
+    const currentPower = actualValues.length > 0 ? actualValues[actualValues.length - 1] : 0;
+
+    // Calculate Y axis bounds with some padding
+    const yMin = Math.max(0, minPower - 50);
+    const yMax = maxPower + 50;
+
+    // Restore canvas with improved layout
     chartContainer.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <div style="font-size: 0.85rem; color: var(--text-muted);">
-          Avg: <strong>${avgPower}W</strong> | Min: <strong>${minPower}W</strong> | Max: <strong>${maxPower}W</strong>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="display: flex; align-items: center; gap: 1.5rem;">
+          <div style="text-align: center;">
+            <div style="font-size: 1.5rem; font-weight: bold; color: #3b82f6;">${currentPower}W</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Current</div>
+          </div>
+          <div style="display: flex; gap: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+            <span>Avg: <strong style="color: var(--text-color);">${avgPower}W</strong></span>
+            <span>Min: <strong style="color: #22c55e;">${minPower}W</strong></span>
+            <span>Max: <strong style="color: #ef4444;">${maxPower}W</strong></span>
+          </div>
         </div>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <button class="btn btn-sm" onclick="downloadPowerData()" title="Download CSV">📥 Download</button>
+          <button class="btn btn-sm" onclick="downloadPowerData()" title="Download CSV">📥 CSV</button>
           <select id="powerChartHours" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.85rem;" onchange="loadPowerChart('${clientId}', parseInt(this.value))">
-            <option value="1" ${hours === 1 ? 'selected' : ''}>Last 1 hour</option>
-            <option value="6" ${hours === 6 ? 'selected' : ''}>Last 6 hours</option>
-            <option value="24" ${hours === 24 ? 'selected' : ''}>Last 24 hours</option>
-            <option value="168" ${hours === 168 ? 'selected' : ''}>Last 7 days</option>
+            <option value="1" ${hours === 1 ? 'selected' : ''}>1 Hour</option>
+            <option value="6" ${hours === 6 ? 'selected' : ''}>6 Hours</option>
+            <option value="24" ${hours === 24 ? 'selected' : ''}>24 Hours</option>
+            <option value="168" ${hours === 168 ? 'selected' : ''}>7 Days</option>
           </select>
         </div>
       </div>
-      <canvas id="powerChart" style="max-height: 250px;"></canvas>
+      <div style="position: relative; height: 280px;">
+        <canvas id="powerChart"></canvas>
+      </div>
     `;
 
     const ctx = document.getElementById('powerChart').getContext('2d');
@@ -1260,15 +1324,19 @@ async function loadPowerChart(clientId, hours = 24) {
       data: {
         labels: labels,
         datasets: [{
-          label: 'Power Consumption (W)',
-          data: powerValues,
+          label: 'Power (W)',
+          data: values,
           borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          backgroundColor: 'rgba(59, 130, 246, 0.15)',
           borderWidth: 2,
           fill: true,
-          tension: 0.3,
-          pointRadius: data.data.length > 100 ? 0 : 2,
-          pointHoverRadius: 4
+          tension: 0.2,
+          pointRadius: values.length > 50 ? 0 : 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: '#3b82f6',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 1,
+          spanGaps: false  // Don't connect points across null values
         }]
       },
       options: {
@@ -1283,52 +1351,107 @@ async function loadPowerChart(clientId, hours = 24) {
             display: false
           },
           tooltip: {
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            padding: 10,
+            backgroundColor: 'rgba(30, 30, 30, 0.95)',
+            titleColor: '#fff',
+            bodyColor: '#fff',
+            padding: 12,
+            cornerRadius: 8,
+            displayColors: false,
+            titleFont: {
+              size: 13,
+              weight: 'bold'
+            },
+            bodyFont: {
+              size: 14
+            },
+            filter: function (tooltipItem) {
+              return tooltipItem.raw !== null;
+            },
             callbacks: {
+              title: function (context) {
+                return context[0].label;
+              },
               label: function (context) {
-                return `Power: ${context.raw}W`;
+                if (context.raw === null) return null;
+                return `⚡ Power: ${context.raw} Watts`;
               }
             }
           }
         },
         scales: {
           x: {
+            type: 'category',
             display: true,
             title: {
               display: true,
-              text: 'Time',
-              color: 'rgba(255, 255, 255, 0.8)',
+              text: hours <= 24 ? 'Time' : 'Date / Time',
+              color: '#333',
               font: {
-                size: 12
-              }
+                size: 13,
+                weight: 'bold'
+              },
+              padding: { top: 8 }
             },
             grid: {
-              color: 'rgba(255, 255, 255, 0.1)'
+              color: 'rgba(0, 0, 0, 0.1)',
+              drawBorder: true,
+              borderColor: 'rgba(0, 0, 0, 0.2)'
             },
             ticks: {
-              color: 'rgba(255, 255, 255, 0.6)',
-              maxTicksLimit: 10
+              display: true,
+              color: '#333',
+              autoSkip: true,
+              maxTicksLimit: hours <= 1 ? 12 : (hours <= 6 ? 12 : (hours <= 24 ? 12 : 14)),
+              maxRotation: 45,
+              minRotation: 0,
+              font: {
+                size: 11,
+                weight: '500'
+              },
+              padding: 6
+            },
+            border: {
+              display: true,
+              color: 'rgba(0, 0, 0, 0.2)'
             }
           },
           y: {
+            type: 'linear',
             display: true,
+            position: 'left',
+            min: yMin,
+            max: yMax,
             title: {
               display: true,
               text: 'Power (Watts)',
-              color: 'rgba(255, 255, 255, 0.8)',
+              color: '#333',
               font: {
-                size: 12
-              }
+                size: 13,
+                weight: 'bold'
+              },
+              padding: { bottom: 8 }
             },
             grid: {
-              color: 'rgba(255, 255, 255, 0.1)'
+              color: 'rgba(0, 0, 0, 0.1)',
+              drawBorder: true,
+              borderColor: 'rgba(0, 0, 0, 0.2)'
             },
             ticks: {
-              color: 'rgba(255, 255, 255, 0.6)',
+              display: true,
+              color: '#333',
+              font: {
+                size: 11,
+                weight: '500'
+              },
+              padding: 6,
               callback: function (value) {
-                return value + 'W';
-              }
+                return value + ' W';
+              },
+              stepSize: Math.ceil((yMax - yMin) / 5)
+            },
+            border: {
+              display: true,
+              color: 'rgba(0, 0, 0, 0.2)'
             }
           }
         }
