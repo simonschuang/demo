@@ -191,6 +191,24 @@ async function getServerVersion() {
   }
 }
 
+// Download Functions
+async function getReleases() {
+  return await apiRequest('/download/releases');
+}
+
+async function getPlatforms() {
+  return await apiRequest('/download/platforms');
+}
+
+async function getInstallToken() {
+  return await apiRequest('/download/install-token');
+}
+
+function getDownloadUrl(version, os, arch, token) {
+  const filename = `install-${os}-${arch}-${version}.zip`;
+  return `${API_BASE}/download/${version}/${filename}?token=${encodeURIComponent(token)}`;
+}
+
 // UI Functions
 function showLoginPage() {
   document.getElementById('app').innerHTML = `
@@ -384,11 +402,14 @@ function renderSidebar(user) {
                 <h2>🖥️ Agent Monitor</h2>
             </div>
             <nav class="sidebar-nav">
-                <a href="#" class="nav-item active" onclick="showDashboard(); return false;">
+                <a href="#" class="nav-item ${state.currentPage === 'dashboard' ? 'active' : ''}" onclick="showDashboard(); return false;">
                     <i>📊</i> Dashboard
                 </a>
-                <a href="#" class="nav-item" onclick="showClientsPage(); return false;">
+                <a href="#" class="nav-item ${state.currentPage === 'clients' ? 'active' : ''}" onclick="showClientsPage(); return false;">
                     <i>💻</i> Clients
+                </a>
+                <a href="#" class="nav-item ${state.currentPage === 'download' ? 'active' : ''}" onclick="showDownloadPage(); return false;">
+                    <i>📦</i> Download
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -1358,6 +1379,238 @@ async function refreshClients() {
 
 async function showClientsPage() {
   await showDashboard();
+}
+
+// ============================================
+// Download Page Functionality
+// ============================================
+
+async function showDownloadPage() {
+  // Stop any detail page polling when navigating away
+  stopDetailPolling();
+  state.currentClientId = null;
+
+  try {
+    const user = await getCurrentUser();
+    const releases = await getReleases();
+    const platforms = await getPlatforms();
+    const tokenData = await getInstallToken();
+
+    state.currentPage = 'download';
+
+    document.getElementById('app').innerHTML = `
+      <div class="app-container">
+        ${renderSidebar(user)}
+        <main class="main-content">
+          <div class="page-header">
+            <h1>📦 Download Agent</h1>
+          </div>
+          
+          <div class="card">
+            <div class="card-header">
+              <h2>Agent Installation Package</h2>
+            </div>
+            <div class="card-body">
+              <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+                Download the agent installation package for your operating system. The package includes the agent binary, configuration file, and installation scripts.
+              </p>
+              
+              <div class="download-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="form-group">
+                  <label for="versionSelect">Version</label>
+                  <select id="versionSelect" class="form-control">
+                    ${releases.versions.map(v => `
+                      <option value="${v}" ${v === releases.latest ? 'selected' : ''}>${v}${v === releases.latest ? ' (Latest)' : ''}</option>
+                    `).join('')}
+                  </select>
+                </div>
+                
+                <div class="form-group">
+                  <label for="platformSelect">Operating System</label>
+                  <select id="platformSelect" class="form-control">
+                    ${platforms.platforms.map(p => `
+                      <option value="${p.os}-${p.arch}">${p.label}</option>
+                    `).join('')}
+                  </select>
+                </div>
+              </div>
+              
+              <button class="btn btn-primary" onclick="downloadAgentPackage()" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
+                📥 Download ZIP
+              </button>
+            </div>
+          </div>
+          
+          <div class="card mt-2">
+            <div class="card-header">
+              <h2>🔑 Install Token</h2>
+            </div>
+            <div class="card-body">
+              <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                Use this token when running <code>install.sh</code> to register the agent with the server.
+              </p>
+              
+              <div class="detail-item" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px;">
+                <span class="detail-label">Token</span>
+                <span class="detail-value" style="word-break: break-all;">
+                  <code id="installTokenValue" style="font-size: 0.85rem;">${escapeHtml(tokenData.token)}</code>
+                  <button class="copy-btn" title="Copy Token" onclick="copyToClipboard('installTokenValue')" style="margin-left: 0.5em; border: none; background: none; cursor: pointer; font-size: 1em;">
+                    📋
+                  </button>
+                </span>
+              </div>
+              
+              <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
+                ⚠️ Token expires in ${Math.round(tokenData.expires_in / 3600)} hours. Generate a new one if needed.
+              </p>
+              
+              <button class="btn btn-sm mt-1" onclick="refreshInstallToken()">
+                🔄 Generate New Token
+              </button>
+            </div>
+          </div>
+          
+          <div class="card mt-2">
+            <div class="card-header">
+              <h2>📋 Installation Steps</h2>
+            </div>
+            <div class="card-body">
+              <div class="installation-steps" style="line-height: 1.8;">
+                <ol style="padding-left: 1.5rem; margin: 0;">
+                  <li style="margin-bottom: 0.75rem;">
+                    <strong>Download</strong> the ZIP file for your operating system
+                  </li>
+                  <li style="margin-bottom: 0.75rem;">
+                    <strong>Extract</strong> the ZIP file:
+                    <pre style="background: var(--bg-secondary); padding: 0.5rem 1rem; border-radius: 4px; margin-top: 0.5rem; overflow-x: auto;"><code>unzip install-linux-amd64-${releases.latest}.zip
+cd install-linux-amd64-${releases.latest}</code></pre>
+                  </li>
+                  <li style="margin-bottom: 0.75rem;">
+                    <strong>Run install.sh</strong> with your token:
+                    <pre style="background: var(--bg-secondary); padding: 0.5rem 1rem; border-radius: 4px; margin-top: 0.5rem; overflow-x: auto;"><code>./install.sh --token YOUR_TOKEN_HERE</code></pre>
+                  </li>
+                  <li style="margin-bottom: 0.75rem;">
+                    <strong>Start the agent</strong> (choose one):
+                    <ul style="margin-top: 0.5rem; list-style-type: disc; padding-left: 1.5rem;">
+                      <li>Foreground: <code>./run.sh</code></li>
+                      <li>Background service: <code>sudo ./svc.sh install && sudo ./svc.sh start</code></li>
+                    </ul>
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card mt-2">
+            <div class="card-header">
+              <h2>📁 Package Contents</h2>
+            </div>
+            <div class="card-body">
+              <table class="table" style="margin: 0;">
+                <thead>
+                  <tr>
+                    <th>File</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>agent</code></td>
+                    <td>Agent executable binary</td>
+                  </tr>
+                  <tr>
+                    <td><code>config.yaml</code></td>
+                    <td>Configuration file template</td>
+                  </tr>
+                  <tr>
+                    <td><code>install.sh</code></td>
+                    <td>Initial setup script (registers agent with server)</td>
+                  </tr>
+                  <tr>
+                    <td><code>run.sh</code></td>
+                    <td>Run agent in foreground</td>
+                  </tr>
+                  <tr>
+                    <td><code>svc.sh</code></td>
+                    <td>Service management (install/start/stop as systemd service)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </main>
+      </div>
+      ${renderModal()}
+    `;
+
+    // Load version info
+    loadVersionInfo();
+
+    // Auto-detect platform
+    autoDetectPlatform();
+  } catch (error) {
+    console.error('Download page error:', error);
+    showLoginPage();
+  }
+}
+
+function autoDetectPlatform() {
+  const platformSelect = document.getElementById('platformSelect');
+  if (!platformSelect) return;
+
+  const userAgent = navigator.userAgent.toLowerCase();
+  const platform = navigator.platform.toLowerCase();
+
+  let detected = 'linux-amd64'; // default
+
+  if (userAgent.includes('win') || platform.includes('win')) {
+    detected = 'windows-amd64';
+  } else if (userAgent.includes('mac') || platform.includes('mac')) {
+    // Check for Apple Silicon
+    if (userAgent.includes('arm') || (navigator.userAgentData && navigator.userAgentData.platform === 'macOS')) {
+      detected = 'darwin-arm64';
+    } else {
+      detected = 'darwin-amd64';
+    }
+  } else if (userAgent.includes('linux')) {
+    // Check for ARM
+    if (userAgent.includes('arm') || userAgent.includes('aarch64')) {
+      detected = 'linux-arm64';
+    }
+  }
+
+  platformSelect.value = detected;
+}
+
+function downloadAgentPackage() {
+  const version = document.getElementById('versionSelect').value;
+  const platform = document.getElementById('platformSelect').value;
+  const [os, arch] = platform.split('-');
+
+  // Use the stored auth token for download
+  const url = getDownloadUrl(version, os, arch, state.token);
+
+  // Create a temporary link and click it to trigger download
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `install-${os}-${arch}-${version}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+async function refreshInstallToken() {
+  try {
+    const tokenData = await getInstallToken();
+    const tokenEl = document.getElementById('installTokenValue');
+    if (tokenEl) {
+      tokenEl.textContent = tokenData.token;
+      tokenEl.style.background = '#e0ffe0';
+      setTimeout(() => { tokenEl.style.background = ''; }, 1000);
+    }
+  } catch (error) {
+    alert('Failed to generate new token: ' + error.message);
+  }
 }
 
 // ============================================

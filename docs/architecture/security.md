@@ -24,7 +24,7 @@
 spec:
   tls:
   - hosts:
-    - agent.myelintek.com
+    - mon.myelintek.com
     secretName: agent-tls-cert
 ```
 
@@ -424,7 +424,7 @@ from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://agent.myelintek.com"  # 只允許特定來源
+        "https://mon.myelintek.com"  # 只允許特定來源
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
