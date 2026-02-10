@@ -80,6 +80,17 @@ spec:
           preStop:
             exec:
               command: ["/bin/sh", "-c", "sleep 5"]
+        
+        # Volume mounts
+        volumeMounts:
+        - name: releases-storage
+          mountPath: /app/releases
+      
+      # Volumes
+      volumes:
+      - name: releases-storage
+        persistentVolumeClaim:
+          claimName: agent-releases-pvc
       
       # Graceful termination
       terminationGracePeriodSeconds: 30

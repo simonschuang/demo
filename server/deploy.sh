@@ -77,18 +77,16 @@ build_image() {
             kind load docker-image ${IMAGE_NAME}:${IMAGE_TAG} --name $CLUSTER_NAME
         fi
     else
-        # Check for nerdctl (for containerd/k8s clusters)
-        if command -v nerdctl &> /dev/null; then
-            print_status "Using nerdctl to build image for containerd..."
-            # Build using nerdctl with k8s.io namespace (used by kubernetes)
-            sudo nerdctl --namespace k8s.io build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-            print_status "Image built in k8s.io namespace"
-        elif command -v docker &> /dev/null; then
-            print_warning "Using docker, you may need to load the image into containerd"
-            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-            print_status "To load into containerd: docker save ${IMAGE_NAME}:${IMAGE_TAG} | sudo ctr -n k8s.io image import -"
+        # For containerd/k8s clusters, use docker and import to containerd
+        if command -v docker &> /dev/null; then
+            print_status "Building image with docker..."
+            sudo docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+            
+            print_status "Importing image into containerd k8s.io namespace..."
+            sudo docker save ${IMAGE_NAME}:${IMAGE_TAG} | sudo ctr -n k8s.io image import -
+            print_status "Image imported to containerd"
         else
-            print_error "No container build tool found (docker, nerdctl)"
+            print_error "Docker is not installed"
             exit 1
         fi
     fi
@@ -118,20 +116,24 @@ deploy() {
     print_status "Deploying Redis..."
     kubectl apply -f k8s/redis.yaml
     
-    # 5. Wait for databases to be ready
+    # 5. Create Releases PVC
+    print_status "Creating Releases storage..."
+    kubectl apply -f k8s/releases-pvc.yaml || print_warning "Releases PVC creation failed"
+    
+    # 6. Wait for databases to be ready
     print_status "Waiting for databases to be ready..."
     kubectl wait --for=condition=ready pod -l app=postgres -n ${NAMESPACE} --timeout=120s || true
     kubectl wait --for=condition=ready pod -l app=redis -n ${NAMESPACE} --timeout=60s || true
     
-    # 6. Deploy Server
+    # 7. Deploy Server
     print_status "Deploying Agent Server..."
     kubectl apply -f k8s/deployment.yaml
     
-    # 7. Create Service
+    # 8. Create Service
     print_status "Creating Service..."
     kubectl apply -f k8s/service.yaml
     
-    # 8. Create Ingress (optional)
+    # 9. Create Ingress (optional)
     print_status "Creating Ingress..."
     kubectl apply -f k8s/ingress.yaml || print_warning "Ingress creation failed (ingress controller may not be installed)"
     
@@ -139,6 +141,7 @@ deploy() {
     echo ""
     print_status "To check status: $0 status"
     print_status "To access the service: $0 port-forward"
+    print_status "To build and upload agent releases: $0 releases v0.1.0"
 }
 
 # Delete deployment
@@ -149,6 +152,7 @@ delete_deployment() {
     kubectl delete -f k8s/ingress.yaml --ignore-not-found
     kubectl delete -f k8s/service.yaml --ignore-not-found
     kubectl delete -f k8s/deployment.yaml --ignore-not-found
+    kubectl delete -f k8s/releases-pvc.yaml --ignore-not-found
     kubectl delete -f k8s/redis.yaml --ignore-not-found
     kubectl delete -f k8s/postgres.yaml --ignore-not-found
     kubectl delete -f k8s/secret.yaml --ignore-not-found
@@ -219,6 +223,75 @@ restart() {
     print_status "Restart completed"
 }
 
+# Build and upload agent releases
+build_releases() {
+    VERSION="${2:-v0.1.0}"
+    print_status "Building agent releases ${VERSION}..."
+    
+    # Check if Go is installed
+    if ! command -v go &> /dev/null; then
+        print_error "Go is not installed"
+        exit 1
+    fi
+    
+    # Run the build-release script
+    if [ -f "./build-release.sh" ]; then
+        chmod +x ./build-release.sh
+        ./build-release.sh "${VERSION}"
+    else
+        print_error "build-release.sh not found"
+        exit 1
+    fi
+    
+    print_status "Releases built successfully"
+}
+
+# Upload releases to Kubernetes pod
+upload_releases() {
+    VERSION="${2:-v0.1.0}"
+    print_status "Uploading releases to Kubernetes..."
+    check_kubectl
+    
+    # Get the pod name
+    POD_NAME=$(kubectl get pods -n ${NAMESPACE} -l app=agent-server -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    
+    if [ -z "$POD_NAME" ]; then
+        print_error "No agent-server pod found. Deploy first."
+        exit 1
+    fi
+    
+    RELEASES_DIR="./releases/${VERSION}"
+    if [ ! -d "$RELEASES_DIR" ]; then
+        print_error "Releases directory not found: $RELEASES_DIR"
+        print_error "Run: $0 build-releases ${VERSION}"
+        exit 1
+    fi
+    
+    # Copy releases to pod
+    print_status "Copying releases to pod ${POD_NAME}..."
+    
+    # Create directory in pod
+    kubectl exec -n ${NAMESPACE} ${POD_NAME} -- mkdir -p /app/releases/${VERSION}
+    
+    # Copy each file
+    for file in ${RELEASES_DIR}/*.zip ${RELEASES_DIR}/checksums.txt; do
+        if [ -f "$file" ]; then
+            filename=$(basename "$file")
+            print_status "Uploading ${filename}..."
+            kubectl cp "$file" "${NAMESPACE}/${POD_NAME}:/app/releases/${VERSION}/${filename}"
+        fi
+    done
+    
+    # Create/update latest symlink
+    kubectl exec -n ${NAMESPACE} ${POD_NAME} -- rm -f /app/releases/latest
+    kubectl exec -n ${NAMESPACE} ${POD_NAME} -- ln -s /app/releases/${VERSION} /app/releases/latest
+    
+    print_status "Releases uploaded successfully"
+    
+    # List uploaded files
+    kubectl exec -n ${NAMESPACE} ${POD_NAME} -- ls -la /app/releases/${VERSION}/
+}
+
 # Main
 case "$1" in
     build)
@@ -242,22 +315,35 @@ case "$1" in
     restart)
         restart
         ;;
+    build-releases)
+        build_releases "$@"
+        ;;
+    upload-releases)
+        upload_releases "$@"
+        ;;
+    releases)
+        build_releases "$@"
+        upload_releases "$@"
+        ;;
     all)
         build_image
         deploy
         ;;
     *)
-        echo "Usage: $0 {build|deploy|delete|status|logs|port-forward|restart|all}"
+        echo "Usage: $0 {build|deploy|delete|status|logs|port-forward|restart|build-releases|upload-releases|releases|all}"
         echo ""
         echo "Commands:"
-        echo "  build        - Build Docker image"
-        echo "  deploy       - Deploy to Kubernetes"
-        echo "  delete       - Delete deployment"
-        echo "  status       - Show deployment status"
-        echo "  logs         - Show agent-server logs"
-        echo "  port-forward - Forward port 8080 for local access"
-        echo "  restart      - Restart agent-server deployment"
-        echo "  all          - Build and deploy"
+        echo "  build            - Build Docker image"
+        echo "  deploy           - Deploy to Kubernetes"
+        echo "  delete           - Delete deployment"
+        echo "  status           - Show deployment status"
+        echo "  logs             - Show agent-server logs"
+        echo "  port-forward     - Forward port 8080 for local access"
+        echo "  restart          - Restart agent-server deployment"
+        echo "  build-releases   - Build agent releases (e.g., $0 build-releases v0.1.0)"
+        echo "  upload-releases  - Upload releases to Kubernetes pod"
+        echo "  releases         - Build and upload releases"
+        echo "  all              - Build and deploy"
         exit 1
         ;;
 esac

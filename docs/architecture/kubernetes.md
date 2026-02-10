@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────────────────┐
 │              External Traffic                   │
-│        (https://agent.myelintek.com)              │
+│        (https://mon.myelintek.com)              │
 └───────────────────┬─────────────────────────────┘
                     │
         ┌───────────▼──────────┐
@@ -61,7 +61,7 @@ metadata:
 data:
   SERVER_HOST: "0.0.0.0"
   SERVER_PORT: "8080"
-  SERVER_URL: "https://agent.myelintek.com"
+  SERVER_URL: "https://mon.myelintek.com"
   
   # Redis
   REDIS_HOST: "redis-service"
@@ -282,16 +282,16 @@ metadata:
     
     # CORS (如需要)
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "https://agent.myelintek.com"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://mon.myelintek.com"
     
 spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - agent.myelintek.com
+    - mon.myelintek.com
     secretName: agent-tls-cert
   rules:
-  - host: agent.myelintek.com
+  - host: mon.myelintek.com
     http:
       paths:
       # WebSocket Path
@@ -700,5 +700,5 @@ psql -h postgres-service -U postgres -d agentdb
 ### WebSocket 測試
 ```bash
 # 使用 wscat 測試 WebSocket
-wscat -c "wss://agent.myelintek.com/ws/test-client-id?token=test-token"
+wscat -c "wss://mon.myelintek.com/ws/test-client-id?token=test-token"
 ```

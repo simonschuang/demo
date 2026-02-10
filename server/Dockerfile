@@ -21,6 +21,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY web/ ./web/
 
+# Create releases directory for agent packages
+RUN mkdir -p /app/releases
+
+# Environment variables
+ENV RELEASES_DIR=/app/releases
+ENV SERVER_URL=localhost:8080
+ENV WS_SCHEME=wss
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
