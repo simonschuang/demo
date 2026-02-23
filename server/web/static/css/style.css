@@ -373,6 +373,11 @@ body {
   color: #721c24;
 }
 
+.badge-admin {
+  background-color: #cce5ff;
+  color: #004085;
+}
+
 .badge-dot {
   width: 8px;
   height: 8px;

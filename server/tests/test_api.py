@@ -145,39 +145,225 @@ async def test_create_client(client):
 
 
 @pytest.mark.asyncio
-async def test_list_clients(client):
-    """Test listing clients"""
-    # Register, login, and create a client
+async def test_user_isolation(client):
+    """Test that regular users can only see their own clients"""
+    # Register two users
     await client.post("/api/v1/auth/register", json={
-        "username": "listuser",
-        "email": "list@example.com",
+        "username": "user_a",
+        "email": "usera@example.com",
         "password": "testpassword123"
     })
-    
-    login_response = await client.post("/api/v1/auth/login", json={
-        "username": "listuser",
+    await client.post("/api/v1/auth/register", json={
+        "username": "user_b",
+        "email": "userb@example.com",
         "password": "testpassword123"
     })
-    token = login_response.json()["access_token"]
-    
-    # Create clients
+
+    # Login as user_a
+    resp_a = await client.post("/api/v1/auth/login", json={
+        "username": "user_a", "password": "testpassword123"
+    })
+    token_a = resp_a.json()["access_token"]
+
+    # Login as user_b
+    resp_b = await client.post("/api/v1/auth/login", json={
+        "username": "user_b", "password": "testpassword123"
+    })
+    token_b = resp_b.json()["access_token"]
+
+    # user_a creates a client
     await client.post(
         "/api/v1/clients",
-        json={"hostname": "host1"},
-        headers={"Authorization": f"Bearer {token}"}
+        json={"hostname": "host-a"},
+        headers={"Authorization": f"Bearer {token_a}"}
     )
+
+    # user_b creates a client
     await client.post(
         "/api/v1/clients",
-        json={"hostname": "host2"},
-        headers={"Authorization": f"Bearer {token}"}
+        json={"hostname": "host-b"},
+        headers={"Authorization": f"Bearer {token_b}"}
     )
-    
-    # List clients
-    response = await client.get(
+
+    # user_a should only see their own client
+    resp = await client.get("/api/v1/clients", headers={"Authorization": f"Bearer {token_a}"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["clients"][0]["hostname"] == "host-a"
+
+    # user_b should only see their own client
+    resp = await client.get("/api/v1/clients", headers={"Authorization": f"Bearer {token_b}"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["clients"][0]["hostname"] == "host-b"
+
+
+@pytest.mark.asyncio
+async def test_admin_sees_all_clients(client):
+    """Test that admin user can see all clients"""
+    from app.auth import get_password_hash, generate_api_token
+    from app.models.user import User
+    from sqlalchemy import select
+
+    # Create admin user directly in the test DB
+    async with test_session_maker() as db:
+        admin = User(
+            username="admin_test",
+            email="admin_test@example.com",
+            password_hash=get_password_hash("adminpass"),
+            api_token=generate_api_token(),
+            is_admin=True,
+        )
+        db.add(admin)
+        await db.commit()
+
+    # Register a regular user
+    await client.post("/api/v1/auth/register", json={
+        "username": "regular_user",
+        "email": "regular@example.com",
+        "password": "testpassword123"
+    })
+    resp_reg = await client.post("/api/v1/auth/login", json={
+        "username": "regular_user", "password": "testpassword123"
+    })
+    token_reg = resp_reg.json()["access_token"]
+
+    # Regular user creates a client
+    await client.post(
         "/api/v1/clients",
-        headers={"Authorization": f"Bearer {token}"}
+        json={"hostname": "regular-host"},
+        headers={"Authorization": f"Bearer {token_reg}"}
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total"] == 2
-    assert len(data["clients"]) == 2
+
+    # Login as admin
+    resp_admin = await client.post("/api/v1/auth/login", json={
+        "username": "admin_test", "password": "adminpass"
+    })
+    token_admin = resp_admin.json()["access_token"]
+
+    # Admin should see all clients
+    resp = await client.get("/api/v1/clients", headers={"Authorization": f"Bearer {token_admin}"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    hostnames = [c["hostname"] for c in data["clients"]]
+    assert "regular-host" in hostnames
+
+    # Admin should have owner_username in each client entry
+    for c in data["clients"]:
+        assert "owner_username" in c
+
+
+@pytest.mark.asyncio
+async def test_admin_access_other_user_client(client):
+    """Test that admin can access another user's client"""
+    from app.auth import get_password_hash, generate_api_token
+    from app.models.user import User
+
+    # Create admin user directly
+    async with test_session_maker() as db:
+        admin = User(
+            username="admin2",
+            email="admin2@example.com",
+            password_hash=get_password_hash("adminpass2"),
+            api_token=generate_api_token(),
+            is_admin=True,
+        )
+        db.add(admin)
+        await db.commit()
+
+    # Register a regular user and create a client
+    await client.post("/api/v1/auth/register", json={
+        "username": "owner_user",
+        "email": "owner@example.com",
+        "password": "testpassword123"
+    })
+    resp_owner = await client.post("/api/v1/auth/login", json={
+        "username": "owner_user", "password": "testpassword123"
+    })
+    token_owner = resp_owner.json()["access_token"]
+
+    resp_client = await client.post(
+        "/api/v1/clients",
+        json={"hostname": "owned-host"},
+        headers={"Authorization": f"Bearer {token_owner}"}
+    )
+    client_id = resp_client.json()["id"]
+
+    # Login as admin
+    resp_admin = await client.post("/api/v1/auth/login", json={
+        "username": "admin2", "password": "adminpass2"
+    })
+    token_admin = resp_admin.json()["access_token"]
+
+    # Admin should be able to access the client
+    resp = await client.get(
+        f"/api/v1/clients/{client_id}",
+        headers={"Authorization": f"Bearer {token_admin}"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["hostname"] == "owned-host"
+
+
+@pytest.mark.asyncio
+async def test_regular_user_cannot_access_other_client(client):
+    """Test that a regular user cannot access another user's client"""
+    # Register two users
+    await client.post("/api/v1/auth/register", json={
+        "username": "user_x",
+        "email": "userx@example.com",
+        "password": "testpassword123"
+    })
+    await client.post("/api/v1/auth/register", json={
+        "username": "user_y",
+        "email": "usery@example.com",
+        "password": "testpassword123"
+    })
+
+    resp_x = await client.post("/api/v1/auth/login", json={
+        "username": "user_x", "password": "testpassword123"
+    })
+    token_x = resp_x.json()["access_token"]
+
+    resp_y = await client.post("/api/v1/auth/login", json={
+        "username": "user_y", "password": "testpassword123"
+    })
+    token_y = resp_y.json()["access_token"]
+
+    # user_x creates a client
+    resp_client = await client.post(
+        "/api/v1/clients",
+        json={"hostname": "host-x"},
+        headers={"Authorization": f"Bearer {token_x}"}
+    )
+    client_id = resp_client.json()["id"]
+
+    # user_y should NOT be able to access user_x's client
+    resp = await client.get(
+        f"/api/v1/clients/{client_id}",
+        headers={"Authorization": f"Bearer {token_y}"}
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_is_admin_field_in_user_response(client):
+    """Test that is_admin field is present in user response"""
+    await client.post("/api/v1/auth/register", json={
+        "username": "check_admin",
+        "email": "checkadmin@example.com",
+        "password": "testpassword123"
+    })
+    resp = await client.post("/api/v1/auth/login", json={
+        "username": "check_admin", "password": "testpassword123"
+    })
+    token = resp.json()["access_token"]
+
+    resp_me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp_me.status_code == 200
+    data = resp_me.json()
+    assert "is_admin" in data
+    assert data["is_admin"] is False
+

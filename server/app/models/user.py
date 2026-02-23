@@ -23,6 +23,7 @@ class User(Base, TimestampMixin):
     api_token = Column(String(255), unique=True, index=True)
     last_login_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
     
     # Relationships
     clients = relationship("Client", back_populates="user", cascade="all, delete-orphan")

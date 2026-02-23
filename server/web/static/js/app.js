@@ -369,7 +369,7 @@ async function showDashboard() {
                             </button>
                         </div>
                         <div class="card-body">
-                            ${renderClientsTable(clientsData.clients)}
+                            ${renderClientsTable(clientsData.clients, user.is_admin)}
                         </div>
                     </div>
                 </main>
@@ -415,6 +415,7 @@ function renderSidebar(user) {
             <div class="sidebar-footer">
                 <div class="user-info">
                     <span>👤 ${escapeHtml(user.username)}</span>
+                    ${user.is_admin ? '<span class="badge badge-admin" style="margin-left:0.4em;font-size:0.7em;vertical-align:middle;">Admin</span>' : ''}
                 </div>
                 <button class="btn btn-sm btn-danger mt-1" onclick="logout()" style="width: 100%;">
                     Logout
@@ -425,7 +426,7 @@ function renderSidebar(user) {
     `;
 }
 
-function renderClientsTable(clients) {
+function renderClientsTable(clients, isAdmin) {
   if (clients.length === 0) {
     return `
             <div class="empty-state">
@@ -444,6 +445,7 @@ function renderClientsTable(clients) {
                         <th>Hostname</th>
                         <th>Status</th>
                         <th>OS / Arch</th>
+                        ${isAdmin ? '<th>Owner</th>' : ''}
                         <th>Last Seen</th>
                         <th>Actions</th>
                     </tr>
@@ -463,6 +465,7 @@ function renderClientsTable(clients) {
                                 </span>
                             </td>
                             <td>${escapeHtml(client.os || '-')} / ${escapeHtml(client.arch || '-')}</td>
+                            ${isAdmin ? `<td>${escapeHtml(client.owner_username || '-')}</td>` : ''}
                             <td>${formatDate(client.last_seen)}</td>
                             <td>
                                 <button class="btn btn-sm btn-primary" onclick="showClientDetail('${client.id}')">

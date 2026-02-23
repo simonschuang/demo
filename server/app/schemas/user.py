@@ -24,6 +24,7 @@ class UserResponse(BaseModel):
     api_token: Optional[str] = None
     created_at: datetime
     is_active: bool
+    is_admin: bool = False
     
     class Config:
         from_attributes = True

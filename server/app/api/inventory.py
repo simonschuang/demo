@@ -56,13 +56,16 @@ async def get_client_inventory(
     db: AsyncSession = Depends(get_db)
 ):
     """Get latest inventory for a client"""
-    # Verify client belongs to user
-    result = await db.execute(
-        select(Client).where(
-            Client.id == client_id,
-            Client.user_id == current_user.id
+    # Verify client belongs to user (admin can access any client)
+    if current_user.is_admin:
+        result = await db.execute(select(Client).where(Client.id == client_id))
+    else:
+        result = await db.execute(
+            select(Client).where(
+                Client.id == client_id,
+                Client.user_id == current_user.id
+            )
         )
-    )
     client = result.scalar_one_or_none()
     
     if not client:
@@ -116,13 +119,16 @@ async def get_inventory_history(
     db: AsyncSession = Depends(get_db)
 ):
     """Get inventory history for a client"""
-    # Verify client belongs to user
-    result = await db.execute(
-        select(Client).where(
-            Client.id == client_id,
-            Client.user_id == current_user.id
+    # Verify client belongs to user (admin can access any client)
+    if current_user.is_admin:
+        result = await db.execute(select(Client).where(Client.id == client_id))
+    else:
+        result = await db.execute(
+            select(Client).where(
+                Client.id == client_id,
+                Client.user_id == current_user.id
+            )
         )
-    )
     client = result.scalar_one_or_none()
     
     if not client:
@@ -165,13 +171,16 @@ async def get_power_history(
     """Get power consumption history for charting"""
     from datetime import datetime, timedelta
     
-    # Verify client belongs to user
-    result = await db.execute(
-        select(Client).where(
-            Client.id == client_id,
-            Client.user_id == current_user.id
+    # Verify client belongs to user (admin can access any client)
+    if current_user.is_admin:
+        result = await db.execute(select(Client).where(Client.id == client_id))
+    else:
+        result = await db.execute(
+            select(Client).where(
+                Client.id == client_id,
+                Client.user_id == current_user.id
+            )
         )
-    )
     client = result.scalar_one_or_none()
     
     if not client:
