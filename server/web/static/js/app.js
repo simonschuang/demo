@@ -1049,6 +1049,39 @@ function renderInventorySection(inventory) {
       `;
     }
 
+    // GPU Section
+    if (bmc.gpu && bmc.gpu.length > 0) {
+      bmcSection += `
+        <div class="detail-section" style="grid-column: 1 / -1;">
+            <h3>🎮 GPU (BMC)</h3>
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>GPU</th>
+                            <th>Manufacturer</th>
+                            <th>Model</th>
+                            <th>Firmware Version</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bmc.gpu.map(gpu => `
+                            <tr>
+                                <td>${escapeHtml(gpu.name || gpu.id || '-')}</td>
+                                <td>${escapeHtml(gpu.manufacturer || '-')}</td>
+                                <td>${escapeHtml(gpu.model || '-')}</td>
+                                <td>${escapeHtml(gpu.firmware_version || '-')}</td>
+                                <td>${getHealthBadge(gpu.status) || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      `;
+    }
+
     // Storage Section
     if (bmc.storage && bmc.storage.length > 0) {
       bmcSection += `

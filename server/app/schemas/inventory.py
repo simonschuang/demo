@@ -65,6 +65,15 @@ class StorageInfo(BaseModel):
     status: Optional[str] = None
 
 
+class GPUInfo(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    firmware_version: Optional[str] = None
+    status: Optional[str] = None
+
+
 class BMCInfo(BaseModel):
     bmc_type: Optional[str] = None
     bmc_version: Optional[str] = None
@@ -82,6 +91,7 @@ class BMCInfo(BaseModel):
     memory_total: Optional[int] = None
     memory_modules: Optional[List[MemoryModuleInfo]] = None
     storage: Optional[List[StorageInfo]] = None
+    gpu: Optional[List[GPUInfo]] = None
     power_supplies: Optional[List[PowerSupplyInfo]] = None
     fans: Optional[List[FanInfo]] = None
     temperatures: Optional[List[TemperatureInfo]] = None

@@ -43,6 +43,7 @@ def extract_bmc_info(raw_data: Optional[Dict[str, Any]]) -> Optional[BMCInfo]:
         memory_total=bmc_data.get("memory_total"),
         memory_modules=bmc_data.get("memory_modules"),
         storage=bmc_data.get("storage"),
+        gpu=bmc_data.get("gpu"),
         power_supplies=bmc_data.get("power_supplies"),
         fans=bmc_data.get("fans"),
         temperatures=bmc_data.get("temperatures"),
