@@ -50,6 +50,16 @@ type StorageInfo struct {
 	Status       string `json:"status"`
 }
 
+// GPUInfo represents GPU information from BMC
+type GPUInfo struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Manufacturer    string `json:"manufacturer"`
+	Model           string `json:"model"`
+	FirmwareVersion string `json:"firmware_version"`
+	Status          string `json:"status"`
+}
+
 // NetworkPortInfo represents network port information from BMC
 type NetworkPortInfo struct {
 	ID          string   `json:"id"`
@@ -102,6 +112,9 @@ type BMCInventory struct {
 
 	// Storage info
 	Storage []StorageInfo `json:"storage"`
+
+	// GPU info
+	GPU []GPUInfo `json:"gpu"`
 
 	// Network ports
 	NetworkPorts []NetworkPortInfo `json:"network_ports"`
@@ -217,6 +230,11 @@ func (c *BMCCollector) collectViaRedfish() (*BMCInventory, error) {
 	// Get storage information
 	if err := c.collectStorageInfo(baseURL, systemURL, inv); err != nil {
 		c.logger.Warnf("Failed to collect storage info: %v", err)
+	}
+
+	// Get GPU information
+	if err := c.collectGPUInfo(baseURL, systemURL, inv); err != nil {
+		c.logger.Warnf("Failed to collect GPU info: %v", err)
 	}
 
 	// Get network information
@@ -487,6 +505,68 @@ func (c *BMCCollector) collectStorageInfo(baseURL string, systemURL string, inv 
 	}
 
 	inv.RawData["storage"] = storage
+
+	return nil
+}
+
+// collectGPUInfo collects GPU information from Redfish PCIe devices
+func (c *BMCCollector) collectGPUInfo(baseURL string, systemURL string, inv *BMCInventory) error {
+	pcieDevices, err := c.redfishGet(baseURL + systemURL + "/PCIeDevices")
+	if err != nil {
+		return err
+	}
+
+	members, ok := pcieDevices["Members"].([]interface{})
+	if !ok {
+		return nil
+	}
+
+	for _, member := range members {
+		memberMap, ok := member.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		deviceURL, ok := memberMap["@odata.id"].(string)
+		if !ok {
+			continue
+		}
+
+		device, err := c.redfishGet(baseURL + deviceURL)
+		if err != nil {
+			c.logger.Warnf("Failed to get PCIe device %s: %v", deviceURL, err)
+			continue
+		}
+
+		// Filter for GPU devices by DeviceType or Name
+		deviceType, _ := device["DeviceType"].(string)
+		name, _ := device["Name"].(string)
+		if deviceType != "GPU" && !strings.Contains(strings.ToUpper(name), "GPU") {
+			continue
+		}
+
+		gpuInfo := GPUInfo{
+			ID:   getStringValue(device, "Id"),
+			Name: name,
+		}
+		if mfr, ok := device["Manufacturer"].(string); ok {
+			gpuInfo.Manufacturer = mfr
+		}
+		if model, ok := device["Model"].(string); ok {
+			gpuInfo.Model = model
+		}
+		if fw, ok := device["FirmwareVersion"].(string); ok {
+			gpuInfo.FirmwareVersion = fw
+		}
+		if status, ok := device["Status"].(map[string]interface{}); ok {
+			if health, ok := status["Health"].(string); ok {
+				gpuInfo.Status = health
+			}
+		}
+
+		inv.GPU = append(inv.GPU, gpuInfo)
+	}
+
+	inv.RawData["pcie_devices"] = pcieDevices
 
 	return nil
 }
@@ -799,6 +879,7 @@ func (inv *BMCInventory) ToMap() map[string]interface{} {
 		"memory_total":         inv.MemoryTotal,
 		"memory_modules":       inv.MemoryModules,
 		"storage":              inv.Storage,
+		"gpu":                  inv.GPU,
 		"network_ports":        inv.NetworkPorts,
 		"power_state":          inv.PowerState,
 		"power_consumed_watts": inv.PowerConsumedWatts,
