@@ -28,7 +28,7 @@ jobs:
       - name: Export and import image into containerd via ctr
         run: |
           set -e
-          docker save agent-server:latest | sudo ctr images import -
+          docker save agent-server:latest | ctr images import -
 
       - name: Restart agent-server deployment
         run: |
