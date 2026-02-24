@@ -367,3 +367,51 @@ async def test_is_admin_field_in_user_response(client):
     assert "is_admin" in data
     assert data["is_admin"] is False
 
+
+@pytest.mark.asyncio
+async def test_register_with_precreated_client_token(client):
+    """Test that config.sh can register using a pre-created client_token from the UI"""
+    # Register and login a user
+    await client.post("/api/v1/auth/register", json={
+        "username": "pretoken_user",
+        "email": "pretoken@example.com",
+        "password": "testpassword123"
+    })
+    resp = await client.post("/api/v1/auth/login", json={
+        "username": "pretoken_user", "password": "testpassword123"
+    })
+    token = resp.json()["access_token"]
+
+    # UI pre-creates a client (as showNewClientPage does)
+    resp_client = await client.post(
+        "/api/v1/clients",
+        json={"hostname": None},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp_client.status_code == 200
+    precreated = resp_client.json()
+    client_token = precreated["client_token"]
+    client_id = precreated["id"]
+
+    # config.sh calls /api/v1/download/register with the pre-created client_token
+    resp_reg = await client.post(
+        f"/api/v1/download/register?token={client_token}&hostname=manta-simon"
+    )
+    assert resp_reg.status_code == 200
+    data = resp_reg.json()
+    # Should return the same client_id and client_token (not create a new client)
+    assert data["client_id"] == client_id
+    assert data["client_token"] == client_token
+    assert "server_url" in data
+    assert "ws_scheme" in data
+
+
+@pytest.mark.asyncio
+async def test_register_with_invalid_token_fails(client):
+    """Test that registering with an invalid token returns 401"""
+    resp = await client.post(
+        "/api/v1/download/register?token=notavalidtoken&hostname=myhost"
+    )
+    assert resp.status_code == 401
+    assert "Invalid or expired install token" in resp.json()["detail"]
+

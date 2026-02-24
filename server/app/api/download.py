@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from jose import jwt
 
 from app.config import settings
@@ -153,36 +154,57 @@ async def download_release(
 
 @router.post("/register")
 async def register_client_from_install(
-    token: str = Query(..., description="Install token from Web UI"),
+    token: str = Query(..., description="Install token from Web UI or pre-created client token"),
     hostname: Optional[str] = Query(None, description="Client hostname"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Register a new client from install.sh
-    
-    This endpoint is called by install.sh to register the client
-    and get client_id and client_token for config.yaml
+    """Register a new client from install.sh or configure a pre-created client.
+
+    This endpoint is called by config.sh to register the client
+    and get client_id and client_token for config.yaml.
+
+    Accepts either:
+    - A JWT install token (from /download/install-token)
+    - A pre-created client_token (shown on the New Client page)
     """
-    # Verify install token
+    # First, check if the token matches a pre-created client
+    result = await db.execute(select(Client).where(Client.client_token == token))
+    existing_client = result.scalar_one_or_none()
+
+    if existing_client is not None:
+        # Update hostname if provided
+        if hostname:
+            existing_client.hostname = hostname
+            await db.commit()
+            await db.refresh(existing_client)
+        return {
+            "client_id": str(existing_client.id),
+            "client_token": existing_client.client_token,
+            "server_url": os.getenv("SERVER_URL", "localhost:8080"),
+            "ws_scheme": os.getenv("WS_SCHEME", "wss")
+        }
+
+    # Fall back to JWT install token verification
     payload = verify_install_token(token)
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired install token"
         )
-    
+
     user_id = payload.get("sub")
-    
+
     # Create new client
     client = Client(
         hostname=hostname or "unnamed",
         user_id=user_id,
         client_token=secrets.token_urlsafe(32)
     )
-    
+
     db.add(client)
     await db.commit()
     await db.refresh(client)
-    
+
     return {
         "client_id": str(client.id),
         "client_token": client.client_token,
