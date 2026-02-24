@@ -21,8 +21,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY web/ ./web/
 
-# Create releases directory for agent packages
-RUN mkdir -p /app/releases
+# Copy pre-built agent release packages
+COPY releases/ /app/releases/
 
 # Environment variables
 ENV RELEASES_DIR=/app/releases
