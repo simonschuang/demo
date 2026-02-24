@@ -754,3 +754,60 @@ body {
   font-size: 0.75rem;
   border-top: 1px solid #3d3d3d;
 }
+/* New Client Page - OS Radio Button Group */
+.os-radio-group {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.os-radio-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: border-color 0.2s, background-color 0.2s;
+  user-select: none;
+}
+
+.os-radio-option:hover {
+  border-color: var(--primary-color);
+  background-color: rgba(74, 144, 217, 0.05);
+}
+
+.os-radio-option input[type="radio"] {
+  accent-color: var(--primary-color);
+  width: 1rem;
+  height: 1rem;
+}
+
+.os-radio-option input[type="radio"]:checked + span {
+  color: var(--primary-color);
+}
+
+.os-radio-option:has(input[type="radio"]:checked) {
+  border-color: var(--primary-color);
+  background-color: rgba(74, 144, 217, 0.08);
+}
+
+/* New Client Page - Install code block */
+.install-code-block {
+  background: #f4f5f7;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.install-code-block code {
+  font-family: Monaco, Menlo, 'Ubuntu Mono', Consolas, monospace;
+  color: var(--text-color);
+}
