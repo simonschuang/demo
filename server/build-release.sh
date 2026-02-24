@@ -52,7 +52,7 @@ if [ ! -d "$CLIENT_DIR" ]; then
 fi
 
 # Check if scripts exist
-if [ ! -f "${SCRIPTS_DIR}/install.sh" ]; then
+if [ ! -f "${SCRIPTS_DIR}/config.sh" ]; then
     print_error "Scripts not found in: $SCRIPTS_DIR"
     exit 1
 fi
@@ -86,7 +86,7 @@ for PLATFORM in "${PLATFORMS[@]}"; do
         -o "${PACKAGE_DIR}/${BINARY_NAME}" ./cmd/agent/
 
     # Copy scripts
-    cp "${SCRIPTS_DIR}/install.sh" "${PACKAGE_DIR}/"
+    cp "${SCRIPTS_DIR}/config.sh" "${PACKAGE_DIR}/"
     cp "${SCRIPTS_DIR}/run.sh" "${PACKAGE_DIR}/"
     cp "${SCRIPTS_DIR}/svc.sh" "${PACKAGE_DIR}/"
     cp "${SCRIPTS_DIR}/config.yaml" "${PACKAGE_DIR}/"
@@ -106,9 +106,7 @@ EOF
         cd "$CLIENT_DIR"
     else
         ARCHIVE_NAME="${PACKAGE_NAME}.tar.gz"
-        cd "${TEMP_DIR}"
-        tar czf "${VERSION_DIR}/${ARCHIVE_NAME}" "${PACKAGE_NAME}"
-        cd "$CLIENT_DIR"
+        tar czf "${VERSION_DIR}/${ARCHIVE_NAME}" -C "${PACKAGE_DIR}" .
     fi
 
     # Cleanup temp directory
