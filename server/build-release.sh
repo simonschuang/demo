@@ -9,7 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="${SCRIPT_DIR}/../client"
 OUTPUT_DIR="${SCRIPT_DIR}/releases"
-SCRIPTS_DIR="${SCRIPT_DIR}/releases/scripts"
+SCRIPTS_DIR="${SCRIPT_DIR}/../scripts"
 
 # Colors
 RED='\033[0;31m'

@@ -1,0 +1,32 @@
+# Agent Configuration
+server_url: "mon.myelintek.com"
+client_id: "3b37b70b-d92f-4e5f-8578-5815b2d3cdda"
+client_token: "uk4oyr1qMwlGfqiqgg9MTt1ZZHxyqzmZhtwlIMD-wPk"
+
+# WebSocket settings
+ws_scheme: "wss"  # Use "wss" for tls, "ws" for non-tls
+ws_path: "/ws"
+insecure_skip_verify: true  # Skip TLS certificate verification for wss://
+
+# Heartbeat settings (seconds)
+heartbeat_interval: 15
+reconnect_interval: 5
+
+# Inventory collection interval (seconds)
+collect_interval: 60
+
+# BMC Configuration (optional)
+# When enabled, the agent will collect hardware information from the BMC
+# instead of or in addition to the local host
+bmc:
+  enabled: true              # Set to true to enable BMC collection
+  ip: "100.74.5.221"                      # BMC IP address (e.g., "192.168.1.100")
+  username: "admin"                # BMC username
+  password: "OGBP7900018"                # BMC password
+  protocol: "redfish"         # Protocol: "redfish" or "ipmi"
+  port: 443                   # BMC port (Redfish: 443, IPMI: 623)
+  insecure_skip_verify: true  # Skip TLS certificate verification
+
+# Logging
+log_level: "debug"  # debug, info, warn, error
+log_file: ""  # Leave empty for stdout
