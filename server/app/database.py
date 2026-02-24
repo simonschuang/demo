@@ -1,6 +1,7 @@
 """
 Database Connection and Session Management
 """
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.config import settings
 from app.models.base import Base
@@ -34,6 +35,13 @@ async def init_db():
     """Initialize database tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migrate: add is_admin column to users table if it doesn't exist
+        if conn.dialect.name == "postgresql":
+            await conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"
+                )
+            )
 
 
 async def get_db() -> AsyncSession:
