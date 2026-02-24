@@ -328,13 +328,10 @@ async function showDashboard() {
 
     document.getElementById('app').innerHTML = `
             <div class="app-container">
-                ${renderSidebar(user)}
                 <main class="main-content">
                     <div class="page-header">
                         <h1>Dashboard</h1>
-                        <button class="btn btn-primary" onclick="showCreateClientModal()">
-                            <i>➕</i> Add Client
-                        </button>
+                        ${renderUserArea(user)}
                     </div>
                     
                     <div class="stats-grid">
@@ -400,34 +397,13 @@ async function loadVersionInfo() {
   }
 }
 
-function renderSidebar(user) {
+function renderUserArea(user) {
   return `
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>🖥️ Agent Monitor</h2>
-            </div>
-            <nav class="sidebar-nav">
-                <a href="#" class="nav-item ${state.currentPage === 'dashboard' ? 'active' : ''}" onclick="showDashboard(); return false;">
-                    <i>📊</i> Dashboard
-                </a>
-                <a href="#" class="nav-item ${state.currentPage === 'clients' ? 'active' : ''}" onclick="showClientsPage(); return false;">
-                    <i>💻</i> Clients
-                </a>
-                <a href="#" class="nav-item ${state.currentPage === 'download' ? 'active' : ''}" onclick="showDownloadPage(); return false;">
-                    <i>📦</i> Download
-                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <span>👤 ${escapeHtml(user.username)}</span>
-                    ${user.is_admin ? '<span class="badge badge-admin" style="margin-left:0.4em;font-size:0.7em;vertical-align:middle;">Admin</span>' : ''}
-                </div>
-                <button class="btn btn-sm btn-danger mt-1" onclick="logout()" style="width: 100%;">
-                    Logout
-                </button>
-                <div id="versionInfo" style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted); text-align: center;"></div>
-            </div>
-        </aside>
+        <div class="user-area">
+            <span>👤 ${escapeHtml(user.username)}</span>
+            ${user.is_admin ? '<span class="badge badge-admin" style="font-size:0.7em;vertical-align:middle;">Admin</span>' : ''}
+            <button class="btn btn-sm btn-danger" onclick="logout()">Logout</button>
+        </div>
     `;
 }
 
@@ -437,7 +413,7 @@ function renderClientsTable(clients, isAdmin) {
             <div class="empty-state">
                 <i>📭</i>
                 <h3>No clients found</h3>
-                <p>Click "Add Client" to register your first agent.</p>
+                <p>Click "New Client" to register your first agent.</p>
             </div>
         `;
   }
@@ -642,7 +618,7 @@ async function showClientDetail(clientId) {
   try {
     showModal('Loading...', '<div class="loading"><div class="spinner"></div></div>', '');
 
-    const client = await getClient(clientId);
+    const [client, user] = await Promise.all([getClient(clientId), getCurrentUser()]);
     let inventory = null;
 
     try {
@@ -681,6 +657,7 @@ async function showClientDetail(clientId) {
                         <span class="badge-dot"></span>
                         ${client.status}
                     </span>
+                    ${renderUserArea(user)}
                 </div>
             </div>
             
@@ -1613,11 +1590,13 @@ async function showNewClientPage() {
 
     document.getElementById('app').innerHTML = `
       <div class="app-container">
-        ${renderSidebar(user)}
         <main class="main-content">
           <div class="page-header">
             <h1>New Client</h1>
-            <button class="btn" onclick="showDashboard()">← Back</button>
+            <div class="page-header-actions">
+              <button class="btn" onclick="showDashboard()">← Back</button>
+              ${renderUserArea(user)}
+            </div>
           </div>
 
           <div class="card">
@@ -1746,10 +1725,10 @@ async function showDownloadPage() {
 
     document.getElementById('app').innerHTML = `
       <div class="app-container">
-        ${renderSidebar(user)}
         <main class="main-content">
           <div class="page-header">
             <h1>📦 Download Agent</h1>
+            ${renderUserArea(user)}
           </div>
           
           <div class="card">
