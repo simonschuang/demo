@@ -10,12 +10,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from jose import jwt
 
 from app.config import settings
 from app.database import get_db
-from app.auth import get_current_user, get_current_user_optional, verify_token
+from app.auth import get_current_user
 from app.models.user import User
 from app.models.client import Client
 
@@ -109,32 +108,11 @@ async def get_install_token(
 async def download_release(
     version: str,
     filename: str,
-    token: Optional[str] = Query(None, description="Bearer token for authentication"),
-    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Download a specific release file
     
-    Example: GET /download/v1.0.0/install-linux-amd64-v1.0.0.zip?token=xxx
+    Example: GET /download/v1.0.0/install-linux-amd64-v1.0.0.zip
     """
-    # Check authentication - either via header or query parameter
-    if current_user is None:
-        if token:
-            # Verify the token from query parameter
-            from app.auth import verify_token
-            from app.database import async_session_maker
-            
-            payload = verify_token(token)
-            if payload is None:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token"
-                )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required"
-            )
-    
     # Validate filename format
     if not (filename.endswith(".zip") or filename.endswith(".tar.gz")):
         raise HTTPException(
