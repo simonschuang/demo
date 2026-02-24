@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -134,9 +135,25 @@ func (c *Config) IsBMCMode() bool {
 
 // GetWSURL returns the full WebSocket URL
 func (c *Config) GetWSURL() string {
+	host := c.ServerURL
+	wsScheme := c.WSScheme
+
+	// Handle server_url with a scheme prefix (e.g., "https://mon.myelintek.com")
+	if u, err := url.Parse(host); err == nil && u.Scheme != "" && u.Host != "" {
+		host = u.Host
+		// Infer WebSocket scheme from the HTTP scheme; for unrecognized schemes
+		// the configured ws_scheme is retained as-is.
+		switch u.Scheme {
+		case "https":
+			wsScheme = "wss"
+		case "http":
+			wsScheme = "ws"
+		}
+	}
+
 	return fmt.Sprintf("%s://%s%s/%s?token=%s",
-		c.WSScheme,
-		c.ServerURL,
+		wsScheme,
+		host,
 		c.WSPath,
 		c.ClientID,
 		c.ClientToken,
