@@ -1697,11 +1697,16 @@ function updateNewClientInstructions(token, version, serverUrl) {
   }
 
   const arch = archSelect ? archSelect.value : 'x64';
-  const filename = `mon-agent-${os}-${arch}-${version}.tar.gz`;
+  const ext = os === 'windows' ? 'zip' : 'tar.gz';
+  const filename = `mon-agent-${os}-${arch}-${version}.${ext}`;
   const downloadUrl = `${serverUrl}/api/v1/download/${version}/${filename}`;
 
   const instructionsEl = document.getElementById('ncDownloadInstructions');
   if (!instructionsEl) return;
+
+  const extractCmd = os === 'windows'
+    ? `Expand-Archive -Path ${filename} -DestinationPath .`
+    : `tar xzf ./${filename}`;
 
   instructionsEl.innerHTML = `
     <p style="font-weight: 600; margin-bottom: 0.5rem;">Download</p>
@@ -1712,7 +1717,7 @@ $ curl -o ${filename} -L ${downloadUrl}
 # Optional: Validate the hash (check release notes for the expected hash value)
 # $ echo "&lt;hash&gt;  ${filename}" | shasum -a 256 -c
 # Extract the installer
-$ tar xzf ./${filename}</code></pre>
+$ ${extractCmd}</code></pre>
 
     <p style="font-weight: 600; margin: 1.25rem 0 0.5rem;">Configure</p>
     <pre class="install-code-block"><code id="ncConfigureCmd"># Create the client agent and start the configuration experience

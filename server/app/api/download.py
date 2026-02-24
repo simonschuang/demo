@@ -136,7 +136,7 @@ async def download_release(
             )
     
     # Validate filename format
-    if not filename.endswith(".zip"):
+    if not (filename.endswith(".zip") or filename.endswith(".tar.gz")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid filename format"
@@ -165,10 +165,11 @@ async def download_release(
             detail=f"Release file not found: {filename}"
         )
     
+    media_type = "application/gzip" if filename.endswith(".tar.gz") else "application/zip"
     return FileResponse(
         path=str(file_path),
         filename=filename,
-        media_type="application/zip"
+        media_type=media_type
     )
 
 
