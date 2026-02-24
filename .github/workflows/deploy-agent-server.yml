@@ -17,6 +17,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Build agent release packages
+        run: |
+          bash server/build-release.sh
+
       - name: Build Docker image
         run: |
           docker build -t agent-server:latest ./server
