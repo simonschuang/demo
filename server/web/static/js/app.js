@@ -364,9 +364,14 @@ async function showDashboard() {
                     <div class="card">
                         <div class="card-header">
                             <h2>Clients</h2>
-                            <button class="btn btn-sm btn-primary" onclick="refreshClients()">
-                                🔄 Refresh
-                            </button>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-sm btn-primary" onclick="showNewClientPage()">
+                                    ➕ New Client
+                                </button>
+                                <button class="btn btn-sm" onclick="refreshClients()">
+                                    🔄 Refresh
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             ${renderClientsTable(clientsData.clients, user.is_admin)}
@@ -1578,6 +1583,148 @@ async function refreshClients() {
 
 async function showClientsPage() {
   await showDashboard();
+}
+
+// ============================================
+// New Client Page Functionality
+// ============================================
+
+async function showNewClientPage() {
+  stopDetailPolling();
+  state.currentClientId = null;
+  state.currentPage = 'new-client';
+
+  try {
+    const user = await getCurrentUser();
+
+    // Create a client to obtain the token for the configure step
+    const client = await createClient({ hostname: null });
+
+    // Get latest release version
+    let latestVersion = 'v0.1.0';
+    try {
+      const releases = await getReleases();
+      latestVersion = releases.latest || 'v0.1.0';
+    } catch (e) {
+      // use default version
+    }
+
+    const serverUrl = window.location.origin;
+
+    document.getElementById('app').innerHTML = `
+      <div class="app-container">
+        ${renderSidebar(user)}
+        <main class="main-content">
+          <div class="page-header">
+            <h1>New Client</h1>
+            <button class="btn" onclick="showDashboard()">← Back</button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2>1. Operating System</h2>
+            </div>
+            <div class="card-body">
+              <div class="os-radio-group">
+                <label class="os-radio-option">
+                  <input type="radio" name="ncOs" value="linux" checked
+                    onchange="updateNewClientInstructions('${escapeHtml(client.client_token)}', '${escapeHtml(latestVersion)}', '${escapeHtml(serverUrl)}')">
+                  <span>🐧 Linux</span>
+                </label>
+                <label class="os-radio-option">
+                  <input type="radio" name="ncOs" value="macos"
+                    onchange="updateNewClientInstructions('${escapeHtml(client.client_token)}', '${escapeHtml(latestVersion)}', '${escapeHtml(serverUrl)}')">
+                  <span>🍎 macOS</span>
+                </label>
+                <label class="os-radio-option">
+                  <input type="radio" name="ncOs" value="windows"
+                    onchange="updateNewClientInstructions('${escapeHtml(client.client_token)}', '${escapeHtml(latestVersion)}', '${escapeHtml(serverUrl)}')">
+                  <span>🪟 Windows</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2>2. Architecture</h2>
+            </div>
+            <div class="card-body">
+              <div class="form-group" style="margin-bottom: 0;">
+                <select id="ncArchSelect" class="form-control" style="max-width: 300px;"
+                  onchange="updateNewClientInstructions('${escapeHtml(client.client_token)}', '${escapeHtml(latestVersion)}', '${escapeHtml(serverUrl)}')">
+                  <option value="x64">x64</option>
+                  <option value="arm64">ARM64</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2>3. Download</h2>
+            </div>
+            <div class="card-body" id="ncDownloadInstructions"></div>
+          </div>
+        </main>
+      </div>
+      ${renderModal()}
+    `;
+
+    loadVersionInfo();
+    updateNewClientInstructions(client.client_token, latestVersion, serverUrl);
+  } catch (error) {
+    console.error('New client page error:', error);
+    showLoginPage();
+  }
+}
+
+function updateNewClientInstructions(token, version, serverUrl) {
+  const osRadio = document.querySelector('input[name="ncOs"]:checked');
+  const os = osRadio ? osRadio.value : 'linux';
+  const archSelect = document.getElementById('ncArchSelect');
+
+  // Windows only supports x64
+  if (os === 'windows') {
+    if (archSelect && archSelect.options.length > 1) {
+      archSelect.innerHTML = '<option value="x64">x64</option>';
+    }
+  } else {
+    if (archSelect && archSelect.options.length === 1) {
+      archSelect.innerHTML = '<option value="x64">x64</option><option value="arm64">ARM64</option>';
+      archSelect.value = 'x64';
+    }
+  }
+
+  const arch = archSelect ? archSelect.value : 'x64';
+  const ext = os === 'windows' ? 'zip' : 'tar.gz';
+  const filename = `mon-agent-${os}-${arch}-${version}.${ext}`;
+  const downloadUrl = `${serverUrl}/api/v1/download/${version}/${filename}`;
+
+  const instructionsEl = document.getElementById('ncDownloadInstructions');
+  if (!instructionsEl) return;
+
+  const extractCmd = os === 'windows'
+    ? `Expand-Archive -Path ${filename} -DestinationPath .`
+    : `tar xzf ./${filename}`;
+
+  instructionsEl.innerHTML = `
+    <p style="font-weight: 600; margin-bottom: 0.5rem;">Download</p>
+    <pre class="install-code-block"><code id="ncDownloadCmd"># Create a folder
+$ mkdir mon-agent &amp;&amp; cd mon-agent
+# Download the latest agent
+$ curl -o ${filename} -L ${downloadUrl}
+# Optional: Validate the hash (check release notes for the expected hash value)
+# $ echo "&lt;hash&gt;  ${filename}" | shasum -a 256 -c
+# Extract the installer
+$ ${extractCmd}</code></pre>
+
+    <p style="font-weight: 600; margin: 1.25rem 0 0.5rem;">Configure</p>
+    <pre class="install-code-block"><code id="ncConfigureCmd"># Create the client agent and start the configuration experience
+$ ./config.sh --url ${serverUrl} --token ${token}
+# Last step, run it!
+$ ./run.sh</code></pre>
+  `;
 }
 
 // ============================================
