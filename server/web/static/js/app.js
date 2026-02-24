@@ -618,7 +618,7 @@ async function showClientDetail(clientId) {
   try {
     showModal('Loading...', '<div class="loading"><div class="spinner"></div></div>', '');
 
-    const client = await getClient(clientId);
+    const [client, user] = await Promise.all([getClient(clientId), getCurrentUser()]);
     let inventory = null;
 
     try {
@@ -657,6 +657,7 @@ async function showClientDetail(clientId) {
                         <span class="badge-dot"></span>
                         ${client.status}
                     </span>
+                    ${renderUserArea(user)}
                 </div>
             </div>
             
