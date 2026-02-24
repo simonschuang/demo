@@ -25,6 +25,37 @@ from app.websocket.handler import handle_websocket_message
 from app.auth import verify_client_token, get_current_user
 from app.terminal.proxy import terminal_proxy
 
+
+async def create_admin_user():
+    """Create the admin user if it does not exist yet"""
+    from sqlalchemy import select
+    from app.models.user import User
+    from app.auth import get_password_hash, generate_api_token
+
+    async with async_session_maker() as db:
+        result = await db.execute(select(User).where(User.username == settings.ADMIN_USERNAME))
+        admin = result.scalar_one_or_none()
+        if admin is None:
+            admin = User(
+                username=settings.ADMIN_USERNAME,
+                email=settings.ADMIN_EMAIL,
+                password_hash=get_password_hash(settings.ADMIN_PASSWORD),
+                api_token=generate_api_token(),
+                is_admin=True,
+            )
+            db.add(admin)
+            await db.commit()
+            logger.info(f"Admin user '{settings.ADMIN_USERNAME}' created")
+            if settings.ADMIN_PASSWORD == "admin":
+                logger.warning(
+                    "Admin account is using the default password! "
+                    "Please set ADMIN_PASSWORD in your environment."
+                )
+        elif not admin.is_admin:
+            admin.is_admin = True
+            await db.commit()
+            logger.info(f"User '{settings.ADMIN_USERNAME}' promoted to admin")
+
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -66,6 +97,10 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     logger.info("Database initialized")
+    
+    # Create admin user if not exists
+    await create_admin_user()
+    logger.info("Admin user checked/created")
     
     # Connect to Redis
     try:

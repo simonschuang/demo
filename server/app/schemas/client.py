@@ -29,6 +29,7 @@ class ClientResponse(BaseModel):
     last_connected_at: Optional[datetime] = None
     last_seen: Optional[datetime] = None
     ip_address: Optional[str] = None
+    owner_username: Optional[str] = None
     
     class Config:
         from_attributes = True

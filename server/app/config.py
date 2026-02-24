@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Binary Storage
     BINARY_STORAGE_PATH: str = "/storage/binaries"
     
+    # Admin User (auto-created on startup)
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin"
+    ADMIN_EMAIL: str = "admin@example.com"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
