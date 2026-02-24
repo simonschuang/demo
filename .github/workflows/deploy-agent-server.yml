@@ -1,0 +1,49 @@
+name: Deploy Agent Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, mon-host1]
+    permissions:
+      contents: read
+    env:
+      DEPLOY_TIMEOUT: 120s
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build agent release packages
+        run: |
+          bash server/build-release.sh
+
+      - name: Build Docker image
+        run: |
+          docker build -t agent-server:latest ./server
+
+      - name: Export and import image into containerd via ctr
+        run: |
+          set -e
+          docker save agent-server:latest | sudo ctr images import -
+
+      - name: Restart agent-server deployment
+        run: |
+          kubectl rollout restart deployment/agent-server -n agent-system
+
+      - name: Wait for rollout to complete
+        run: |
+          kubectl rollout status deployment/agent-server -n agent-system --timeout=${{ env.DEPLOY_TIMEOUT }}
+
+      - name: Verify agent-server pod is running
+        run: |
+          kubectl wait pod \
+            --selector=app=agent-server \
+            --for=condition=Ready \
+            --namespace=agent-system \
+            --timeout=${{ env.DEPLOY_TIMEOUT }}
+          echo "agent-server pod status:"
+          kubectl get pods -n agent-system -l app=agent-server
